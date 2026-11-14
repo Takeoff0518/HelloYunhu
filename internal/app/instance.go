@@ -10,12 +10,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Takeoff0518/HelloYunhu/internal/bridge/cache"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/event"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/identity"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/media"
 	"github.com/Takeoff0518/HelloYunhu/internal/config"
 	"github.com/Takeoff0518/HelloYunhu/internal/onebot/action"
 	onebotclient "github.com/Takeoff0518/HelloYunhu/internal/onebot/client"
+	obmodel "github.com/Takeoff0518/HelloYunhu/internal/onebot/model"
 	"github.com/Takeoff0518/HelloYunhu/internal/yunhu/api"
 	"github.com/Takeoff0518/HelloYunhu/internal/yunhu/model"
 	"github.com/Takeoff0518/HelloYunhu/internal/yunhu/subscribe"
@@ -48,6 +50,8 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 
 	// 媒体读取无状态，两个方向共用同一个实例。
 	mediaLoader := &media.Loader{}
+	// 最近消息缓存用于 get_msg 回放，容量按默认值。
+	recent := cache.NewMessages(0)
 
 	dispatcher := &action.Dispatcher{
 		SelfID:   selfID,
@@ -55,6 +59,7 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 		API:      apiClient,
 		Messages: messages,
 		Media:    mediaLoader,
+		Recent:   recent,
 		Logger:   log,
 	}
 
@@ -122,7 +127,7 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 
 	run("订阅连接", func() error { return subscriber.Run(ctx, events) })
 	run("框架连接", func() error { return onebot.Run(ctx) })
-	run("事件转发", func() error { return forward(ctx, events, converter, onebot, log) })
+	run("事件转发", func() error { return forward(ctx, events, converter, onebot, recent, log) })
 
 	<-ctx.Done()
 	cancel()
@@ -132,7 +137,9 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 }
 
 // forward 把云湖事件转换后写入框架连接，直到上下文结束。
-func forward(ctx context.Context, events <-chan model.Envelope, converter *event.Converter, sender *onebotclient.Client, logger *slog.Logger) error {
+//
+// 转换出的消息事件同时放入最近消息缓存，供 get_msg 回放。
+func forward(ctx context.Context, events <-chan model.Envelope, converter *event.Converter, sender *onebotclient.Client, recent *cache.Messages, logger *slog.Logger) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -146,6 +153,10 @@ func forward(ctx context.Context, events <-chan model.Envelope, converter *event
 			}
 			if !ok {
 				continue
+			}
+
+			if messageEvent, isMessage := converted.(*obmodel.MessageEvent); isMessage {
+				recent.Put(messageEvent.MessageID, messageEvent)
 			}
 
 			if err := sender.SendEvent(converted); err != nil {

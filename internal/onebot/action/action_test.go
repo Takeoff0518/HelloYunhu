@@ -14,6 +14,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Takeoff0518/HelloYunhu/internal/bridge/cache"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/identity"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/media"
 	obmodel "github.com/Takeoff0518/HelloYunhu/internal/onebot/model"
@@ -59,6 +60,18 @@ func newDispatcher(t *testing.T) (*Dispatcher, *sentRequest) {
 				t.Errorf("解析上传表单失败: %v", err)
 			}
 			_, _ = io.WriteString(w, `{"code":0,"data":{"imageKey":"img-key"}}`)
+
+		case "/open-apis/v1/file/upload":
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Errorf("解析上传表单失败: %v", err)
+			}
+			_, _ = io.WriteString(w, `{"code":0,"data":{"fileKey":"file-key"}}`)
+
+		case "/open-apis/v1/video/upload":
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Errorf("解析上传表单失败: %v", err)
+			}
+			_, _ = io.WriteString(w, `{"code":0,"data":{"videoKey":"video-key"}}`)
 
 		default:
 			t.Errorf("请求路径为 %q", r.URL.Path)
@@ -270,6 +283,114 @@ func TestSendImageWithoutLoader(t *testing.T) {
 	params := json.RawMessage(`{"group_id":20001,"message":[{"type":"image","data":{"file":"base64://eA=="}}]}`)
 	if _, err := dispatcher.Handle(context.Background(), "send_group_msg", params); err == nil {
 		t.Fatal("没有媒体读取器时应返回错误")
+	}
+}
+
+func TestSendFileAndVideoUploadFirst(t *testing.T) {
+	dispatcher, recorder := newDispatcher(t)
+
+	fileParams := json.RawMessage(`{"group_id":20001,"message":[{"type":"file","data":{"file":"base64://ZmlsZQ==","name":"report.pdf"}}]}`)
+	if _, err := dispatcher.Handle(context.Background(), "send_group_msg", fileParams); err != nil {
+		t.Fatalf("发送文件失败: %v", err)
+	}
+
+	fileRequest := recorder.last(t)
+	if fileRequest.ContentType != yunhumodel.ContentTypeFile {
+		t.Errorf("文件的内容类型为 %q", fileRequest.ContentType)
+	}
+	fileContent := fileRequest.Content.(map[string]any)
+	if fileContent["fileKey"] != "file-key" || fileContent["fileName"] != "report.pdf" {
+		t.Errorf("文件内容为 %#v", fileContent)
+	}
+
+	videoParams := json.RawMessage(`{"group_id":20001,"message":[{"type":"video","data":{"file":"base64://dmlkZW8="}}]}`)
+	if _, err := dispatcher.Handle(context.Background(), "send_group_msg", videoParams); err != nil {
+		t.Fatalf("发送视频失败: %v", err)
+	}
+
+	videoRequest := recorder.last(t)
+	if videoRequest.ContentType != yunhumodel.ContentTypeVideo {
+		t.Errorf("视频的内容类型为 %q", videoRequest.ContentType)
+	}
+	if videoRequest.Content.(map[string]any)["videoKey"] != "video-key" {
+		t.Errorf("视频内容为 %#v", videoRequest.Content)
+	}
+}
+
+func TestSendRecordBecomesFile(t *testing.T) {
+	dispatcher, recorder := newDispatcher(t)
+
+	params := json.RawMessage(`{"group_id":20001,"message":[{"type":"record","data":{"file":"base64://YXVkaW8="}}]}`)
+	if _, err := dispatcher.Handle(context.Background(), "send_group_msg", params); err != nil {
+		t.Fatalf("发送语音失败: %v", err)
+	}
+
+	request := recorder.last(t)
+	if request.ContentType != yunhumodel.ContentTypeFile {
+		t.Errorf("语音应按文件发送，内容类型为 %q", request.ContentType)
+	}
+	if request.Content.(map[string]any)["fileKey"] != "file-key" {
+		t.Errorf("内容为 %#v", request.Content)
+	}
+}
+
+func TestGetMsg(t *testing.T) {
+	dispatcher, _ := newDispatcher(t)
+	dispatcher.Recent = cache.NewMessages(4)
+
+	event := map[string]any{"post_type": "message", "message_id": 7}
+	dispatcher.Recent.Put(7, event)
+
+	data, err := dispatcher.Handle(context.Background(), "get_msg", json.RawMessage(`{"message_id":7}`))
+	if err != nil {
+		t.Fatalf("get_msg 失败: %v", err)
+	}
+	if got, ok := data.(map[string]any); !ok || got["message_id"] != 7 {
+		t.Errorf("回放的事件为 %#v", data)
+	}
+}
+
+func TestGetMsgMissReturnsNotFound(t *testing.T) {
+	dispatcher, _ := newDispatcher(t)
+	dispatcher.Recent = cache.NewMessages(4)
+
+	_, err := dispatcher.Handle(context.Background(), "get_msg", json.RawMessage(`{"message_id":99}`))
+
+	var actionErr *obmodel.ActionError
+	if !errors.As(err, &actionErr) {
+		t.Fatalf("错误类型为 %T", err)
+	}
+	if actionErr.Retcode != obmodel.RetcodeNotFound {
+		t.Errorf("返回码为 %d，期望 1404", actionErr.Retcode)
+	}
+}
+
+func TestGetMsgWithoutCache(t *testing.T) {
+	dispatcher, _ := newDispatcher(t)
+
+	if _, err := dispatcher.Handle(context.Background(), "get_msg", json.RawMessage(`{"message_id":1}`)); err == nil {
+		t.Fatal("没有缓存时应返回错误")
+	}
+}
+
+func TestSendCQStringMessage(t *testing.T) {
+	dispatcher, recorder := newDispatcher(t)
+
+	params := json.RawMessage(`{"group_id":20001,"message":"[CQ:at,qq=10002] 你好"}`)
+	if _, err := dispatcher.Handle(context.Background(), "send_group_msg", params); err != nil {
+		t.Fatalf("发送失败: %v", err)
+	}
+
+	request := recorder.last(t)
+	if request.ContentType != yunhumodel.ContentTypeText {
+		t.Errorf("内容类型为 %q", request.ContentType)
+	}
+	content := request.Content.(map[string]any)
+	if at, ok := content["at"].([]any); !ok || len(at) != 1 || at[0] != "10002" {
+		t.Errorf("at 列表为 %#v", content["at"])
+	}
+	if text, _ := content["text"].(string); !strings.Contains(text, "你好") {
+		t.Errorf("正文为 %q", content["text"])
 	}
 }
 

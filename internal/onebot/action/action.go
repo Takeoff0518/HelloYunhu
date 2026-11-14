@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"strconv"
 
+	"github.com/Takeoff0518/HelloYunhu/internal/bridge/cache"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/identity"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/media"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/message"
@@ -34,8 +35,10 @@ type Dispatcher struct {
 	API *api.Client
 	// Messages 是消息标识映射。
 	Messages identity.MessageStore
-	// Media 读取待上传的媒体内容，为空时无法发送图片。
+	// Media 读取待上传的媒体内容，为空时无法发送图片与文件。
 	Media *media.Loader
+	// Recent 保存最近的消息事件，供 get_msg 回放。
+	Recent *cache.Messages
 	// Logger 为空时丢弃日志。
 	Logger *slog.Logger
 }
@@ -61,6 +64,8 @@ func (d *Dispatcher) Handle(ctx context.Context, name string, params json.RawMes
 		return d.groupMemberList(ctx, params)
 	case "get_stranger_info":
 		return d.strangerInfo(ctx, params)
+	case "get_msg":
+		return d.getMessage(ctx, params)
 	case "get_status":
 		return map[string]any{"online": true, "good": true}, nil
 	case "get_version_info":
@@ -76,11 +81,12 @@ func (d *Dispatcher) Handle(ctx context.Context, name string, params json.RawMes
 // sendParams 是发送类接口的公共参数。
 //
 // 框架会把 self_id 等路由参数一并放进 params，这里只取需要的字段，多余参数忽略。
+// message 既可能是消息段数组，也可能是 CQ 码字符串，解析前保持原始内容。
 type sendParams struct {
-	MessageType string            `json:"message_type"`
-	GroupID     int64             `json:"group_id"`
-	UserID      int64             `json:"user_id"`
-	Message     obmodel.InMessage `json:"message"`
+	MessageType string          `json:"message_type"`
+	GroupID     int64           `json:"group_id"`
+	UserID      int64           `json:"user_id"`
+	Message     json.RawMessage `json:"message"`
 }
 
 // sendGroupMessage 处理 send_group_msg。
@@ -93,7 +99,12 @@ func (d *Dispatcher) sendGroupMessage(ctx context.Context, params json.RawMessag
 		return nil, &obmodel.ActionError{Retcode: obmodel.RetcodeBadRequest, Wording: "send_group_msg 缺少 group_id"}
 	}
 
-	return d.send(ctx, yunhumodel.RecvTypeGroup, strconv.FormatInt(value.GroupID, 10), value.Message)
+	segments, err := parseSendMessage(value.Message)
+	if err != nil {
+		return nil, badRequest("send_group_msg", err)
+	}
+
+	return d.send(ctx, yunhumodel.RecvTypeGroup, strconv.FormatInt(value.GroupID, 10), segments)
 }
 
 // sendPrivateMessage 处理 send_private_msg。
@@ -106,7 +117,12 @@ func (d *Dispatcher) sendPrivateMessage(ctx context.Context, params json.RawMess
 		return nil, &obmodel.ActionError{Retcode: obmodel.RetcodeBadRequest, Wording: "send_private_msg 缺少 user_id"}
 	}
 
-	return d.send(ctx, yunhumodel.RecvTypeUser, strconv.FormatInt(value.UserID, 10), value.Message)
+	segments, err := parseSendMessage(value.Message)
+	if err != nil {
+		return nil, badRequest("send_private_msg", err)
+	}
+
+	return d.send(ctx, yunhumodel.RecvTypeUser, strconv.FormatInt(value.UserID, 10), segments)
 }
 
 // sendMessage 处理 send_msg，按 message_type 决定接收方。
@@ -116,17 +132,22 @@ func (d *Dispatcher) sendMessage(ctx context.Context, params json.RawMessage) (a
 		return nil, badRequest("send_msg", err)
 	}
 
+	segments, err := parseSendMessage(value.Message)
+	if err != nil {
+		return nil, badRequest("send_msg", err)
+	}
+
 	switch value.MessageType {
 	case obmodel.MessageTypeGroup:
 		if value.GroupID <= 0 {
 			return nil, &obmodel.ActionError{Retcode: obmodel.RetcodeBadRequest, Wording: "send_msg 缺少 group_id"}
 		}
-		return d.send(ctx, yunhumodel.RecvTypeGroup, strconv.FormatInt(value.GroupID, 10), value.Message)
+		return d.send(ctx, yunhumodel.RecvTypeGroup, strconv.FormatInt(value.GroupID, 10), segments)
 	case obmodel.MessageTypePrivate:
 		if value.UserID <= 0 {
 			return nil, &obmodel.ActionError{Retcode: obmodel.RetcodeBadRequest, Wording: "send_msg 缺少 user_id"}
 		}
-		return d.send(ctx, yunhumodel.RecvTypeUser, strconv.FormatInt(value.UserID, 10), value.Message)
+		return d.send(ctx, yunhumodel.RecvTypeUser, strconv.FormatInt(value.UserID, 10), segments)
 	default:
 		return nil, &obmodel.ActionError{
 			Retcode: obmodel.RetcodeBadRequest,
@@ -190,12 +211,12 @@ func (d *Dispatcher) buildRequest(ctx context.Context, recvType, recvID string, 
 	request := yunhumodel.SendMessageRequest{RecvID: recvID, RecvType: recvType}
 
 	if part.Media != nil {
-		imageKey, err := d.uploadImage(ctx, part.Media.Source)
+		contentType, content, err := d.uploadMedia(ctx, *part.Media)
 		if err != nil {
-			return yunhumodel.SendMessageRequest{}, fmt.Errorf("发送图片: %w", err)
+			return yunhumodel.SendMessageRequest{}, err
 		}
-		request.ContentType = yunhumodel.ContentTypeImage
-		request.Content = map[string]any{"imageKey": imageKey}
+		request.ContentType = contentType
+		request.Content = content
 		return request, nil
 	}
 
@@ -209,18 +230,51 @@ func (d *Dispatcher) buildRequest(ctx context.Context, recvType, recvID string, 
 	return request, nil
 }
 
-// uploadImage 读取图片内容并上传，返回图片标识。
-func (d *Dispatcher) uploadImage(ctx context.Context, source string) (string, error) {
+// uploadMedia 读取媒体内容并上传，返回云湖的内容类型与内容。
+//
+// 云湖没有语音发送能力，语音按文件发送，用户需要点开文件收听。
+func (d *Dispatcher) uploadMedia(ctx context.Context, part message.MediaPart) (string, map[string]any, error) {
 	if d.Media == nil {
-		return "", errors.New("媒体读取尚未初始化")
+		return "", nil, errors.New("媒体读取尚未初始化")
 	}
 
-	name, data, err := d.Media.Load(ctx, source)
+	name, data, err := d.Media.Load(ctx, part.Source)
 	if err != nil {
-		return "", err
+		return "", nil, fmt.Errorf("读取 %s: %w", part.Kind, err)
+	}
+	if part.Name != "" {
+		name = part.Name
 	}
 
-	return d.API.UploadImage(ctx, name, data)
+	switch part.Kind {
+	case "image":
+		key, err := d.API.UploadImage(ctx, name, data)
+		if err != nil {
+			return "", nil, fmt.Errorf("上传图片: %w", err)
+		}
+		return yunhumodel.ContentTypeImage, map[string]any{"imageKey": key}, nil
+
+	case "video":
+		key, err := d.API.UploadVideo(ctx, name, data)
+		if err != nil {
+			return "", nil, fmt.Errorf("上传视频: %w", err)
+		}
+		return yunhumodel.ContentTypeVideo, map[string]any{"videoKey": key}, nil
+
+	case "file", "record":
+		key, err := d.API.UploadFile(ctx, name, data)
+		if err != nil {
+			return "", nil, fmt.Errorf("上传文件: %w", err)
+		}
+		return yunhumodel.ContentTypeFile, map[string]any{
+			"fileName": name,
+			"fileKey":  key,
+			"fileSize": len(data),
+		}, nil
+
+	default:
+		return "", nil, fmt.Errorf("不支持的媒体类型 %q", part.Kind)
+	}
 }
 
 // parentID 把引用的整数标识反查为云湖消息标识，查不到时返回空。
