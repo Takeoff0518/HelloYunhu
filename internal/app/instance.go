@@ -24,7 +24,9 @@ import (
 const eventBufferSize = 64
 
 // runInstance 运行一个机器人实例，直到上下文结束或出错。
-func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.Config, logger *slog.Logger) error {
+//
+// messages 由上层提供，多个实例共用同一份持久化映射表。
+func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.Config, logger *slog.Logger, messages identity.MessageStore) error {
 	log := logger.With("instance", instanceCfg.Name)
 
 	apiClient, err := api.New(api.Config{BaseURL: cfg.Yunhu.APIBase, Token: instanceCfg.Token})
@@ -42,8 +44,6 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 	if !exact {
 		log.Warn("机器人标识无法解析为整数，已退化为哈希值", "bot_id", info.BotID)
 	}
-
-	messages := identity.NewMemory()
 
 	dispatcher := &action.Dispatcher{
 		SelfID:   selfID,
