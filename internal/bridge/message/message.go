@@ -56,6 +56,30 @@ func IncomingImage(file, url, name string) obmodel.OutSegment {
 	}
 }
 
+// IncomingFile 构造文件消息段。
+func IncomingFile(file, url, name string) obmodel.OutSegment {
+	return obmodel.OutSegment{
+		Type: "file",
+		Data: obmodel.FileData{File: file, URL: url, Name: name},
+	}
+}
+
+// IncomingVideo 构造视频消息段。
+func IncomingVideo(file, url string) obmodel.OutSegment {
+	return obmodel.OutSegment{
+		Type: "video",
+		Data: obmodel.VideoData{File: file, URL: url},
+	}
+}
+
+// IncomingAudio 构造语音消息段。
+func IncomingAudio(file, url string) obmodel.OutSegment {
+	return obmodel.OutSegment{
+		Type: "record",
+		Data: obmodel.RecordData{File: file, URL: url},
+	}
+}
+
 // IncomingPlaceholder 为暂不支持的内容类型生成占位文本。
 func IncomingPlaceholder(contentType string) obmodel.OutMessage {
 	var text string
@@ -153,23 +177,14 @@ func Split(segments []obmodel.InSegment) ([]Part, error) {
 				current.ReplyMessageID = data.ID
 			}
 
-		case "image":
-			var data obmodel.ImageData
-			if err := json.Unmarshal(segment.Data, &data); err != nil {
-				return nil, fmt.Errorf("第 %d 个图片段解析失败: %w", index, err)
-			}
-			if data.File == "" {
-				return nil, fmt.Errorf("第 %d 个图片段缺少 file", index)
+		case "image", "file", "video", "record":
+			source, name, err := parseMediaSegment(segment, index)
+			if err != nil {
+				return nil, err
 			}
 			flush()
-			parts = append(parts, Part{Media: &MediaPart{Kind: "image", Source: data.File, Name: data.Name}})
+			parts = append(parts, Part{Media: &MediaPart{Kind: segment.Type, Source: source, Name: name}})
 
-		case "file":
-			builder.WriteString(PlaceholderFile)
-		case "video":
-			builder.WriteString(PlaceholderVideo)
-		case "record":
-			builder.WriteString(PlaceholderAudio)
 		case "face", "mface", "dice", "rps":
 			builder.WriteString(PlaceholderFace)
 		case "json", "xml", "markdown", "node", "forward", "poke":
@@ -186,6 +201,22 @@ func Split(segments []obmodel.InSegment) ([]Part, error) {
 	}
 
 	return parts, nil
+}
+
+// parseMediaSegment 解析媒体段的来源与文件名。
+func parseMediaSegment(segment obmodel.InSegment, index int) (string, string, error) {
+	var data struct {
+		File string `json:"file"`
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(segment.Data, &data); err != nil {
+		return "", "", fmt.Errorf("第 %d 个 %s 段解析失败: %w", index, segment.Type, err)
+	}
+	if data.File == "" {
+		return "", "", fmt.Errorf("第 %d 个 %s 段缺少 file", index, segment.Type)
+	}
+
+	return data.File, data.Name, nil
 }
 
 // parseAtSegment 解析 @ 段的用户标识。

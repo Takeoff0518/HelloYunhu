@@ -234,6 +234,86 @@ func TestConvertImageFallbackToURL(t *testing.T) {
 	}
 }
 
+func TestConvertMediaSegments(t *testing.T) {
+	tests := []struct {
+		name        string
+		payload     string
+		wantType    string
+		wantFileURL string
+	}{
+		{
+			name:        "文件",
+			payload:     `{"fileUrl":"https://cdn.example.com/a.pdf","fileName":"a.pdf"}`,
+			wantType:    "file",
+			wantFileURL: "https://cdn.example.com/a.pdf",
+		},
+		{
+			name:        "视频",
+			payload:     `{"videoUrl":"https://cdn.example.com/a.mp4"}`,
+			wantType:    "video",
+			wantFileURL: "https://cdn.example.com/a.mp4",
+		},
+		{
+			name:        "语音",
+			payload:     `{"audioUrl":"https://cdn.example.com/a.amr"}`,
+			wantType:    "record",
+			wantFileURL: "https://cdn.example.com/a.amr",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			contentType := map[string]string{
+				"文件": "file",
+				"视频": "video",
+				"语音": "audio",
+			}[tt.name]
+
+			raw := `{
+				"version": "1.0",
+				"header": {"eventId": "evt-media", "eventTime": 1761936492000, "eventType": "message.receive.normal"},
+				"event": {
+					"sender": {"senderId": "10001", "senderNickname": "小明"},
+					"chat": {"chatId": "20001", "chatType": "group"},
+					"message": {
+						"msgId": "9f1e2d3c4b5a69788796a5b4c3d2e1f0",
+						"chatId": "20001",
+						"chatType": "group",
+						"contentType": "` + contentType + `",
+						"content": ` + tt.payload + `
+					}
+				}
+			}`
+
+			converter := newConverter()
+			got, ok, err := converter.Convert(context.Background(), parse(t, raw))
+			if err != nil || !ok {
+				t.Fatalf("转换结果为 %v, %v", ok, err)
+			}
+
+			event := got.(*obmodel.MessageEvent)
+			if len(event.Message) != 1 || event.Message[0].Type != tt.wantType {
+				t.Fatalf("消息段为 %+v", event.Message)
+			}
+
+			var file string
+			switch data := event.Message[0].Data.(type) {
+			case obmodel.FileData:
+				file = data.File
+			case obmodel.VideoData:
+				file = data.File
+			case obmodel.RecordData:
+				file = data.File
+			default:
+				t.Fatalf("消息段数据为 %T", event.Message[0].Data)
+			}
+			if file != tt.wantFileURL {
+				t.Errorf("文件为 %q，期望 %q", file, tt.wantFileURL)
+			}
+		})
+	}
+}
+
 func TestConvertSkipsSelfMessage(t *testing.T) {
 	converter := newConverter()
 	converter.BotID = "10001"

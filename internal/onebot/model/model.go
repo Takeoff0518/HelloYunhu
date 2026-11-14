@@ -120,6 +120,22 @@ type (
 		URL  string `json:"url,omitempty"`
 		Name string `json:"name,omitempty"`
 	}
+	// FileData 是文件段。
+	FileData struct {
+		File string `json:"file"`
+		URL  string `json:"url,omitempty"`
+		Name string `json:"name,omitempty"`
+	}
+	// VideoData 是视频段。
+	VideoData struct {
+		File string `json:"file"`
+		URL  string `json:"url,omitempty"`
+	}
+	// RecordData 是语音段。云湖没有语音发送能力，接收方向转成文件。
+	RecordData struct {
+		File string `json:"file"`
+		URL  string `json:"url,omitempty"`
+	}
 )
 
 // Text 构造文本段。

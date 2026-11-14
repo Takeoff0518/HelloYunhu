@@ -153,6 +153,30 @@ func (c *Converter) segments(ctx context.Context, payload *model.Message) (obmod
 	case model.ContentTypeImage:
 		return c.imageSegments(ctx, payload)
 
+	case model.ContentTypeFile:
+		content, err := payload.FileContent()
+		if err != nil {
+			c.logger().Warn("解析文件内容失败，已降级为占位文本", "msg_id", payload.MsgID, "err", err)
+			return message.IncomingPlaceholder(payload.ContentType), ""
+		}
+		return obmodel.OutMessage{message.IncomingFile(content.FileURL, content.FileURL, content.FileName)}, message.PlaceholderFile
+
+	case model.ContentTypeVideo:
+		content, err := payload.VideoContent()
+		if err != nil {
+			c.logger().Warn("解析视频内容失败，已降级为占位文本", "msg_id", payload.MsgID, "err", err)
+			return message.IncomingPlaceholder(payload.ContentType), ""
+		}
+		return obmodel.OutMessage{message.IncomingVideo(content.VideoURL, content.VideoURL)}, message.PlaceholderVideo
+
+	case model.ContentTypeAudio:
+		content, err := payload.AudioContent()
+		if err != nil {
+			c.logger().Warn("解析语音内容失败，已降级为占位文本", "msg_id", payload.MsgID, "err", err)
+			return message.IncomingPlaceholder(payload.ContentType), ""
+		}
+		return obmodel.OutMessage{message.IncomingAudio(content.AudioURL, content.AudioURL)}, message.PlaceholderAudio
+
 	default:
 		return message.IncomingPlaceholder(payload.ContentType), ""
 	}

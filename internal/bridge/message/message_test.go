@@ -173,7 +173,6 @@ func TestSplitAtAsStringAndAll(t *testing.T) {
 
 func TestSplitPlaceholders(t *testing.T) {
 	parts, err := Split([]obmodel.InSegment{
-		{Type: "file", Data: json.RawMessage(`{"file":"report.pdf"}`)},
 		{Type: "face", Data: json.RawMessage(`{"id":"1"}`)},
 		{Type: "node", Data: json.RawMessage(`{}`)},
 	})
@@ -183,9 +182,43 @@ func TestSplitPlaceholders(t *testing.T) {
 	if len(parts) != 1 {
 		t.Fatalf("段数为 %d", len(parts))
 	}
-	for _, want := range []string{PlaceholderFile, PlaceholderFace, "暂不支持的消息段: node"} {
+	for _, want := range []string{PlaceholderFace, "暂不支持的消息段: node"} {
 		if !strings.Contains(parts[0].Text, want) {
 			t.Errorf("正文 %q 中缺少 %q", parts[0].Text, want)
+		}
+	}
+}
+
+func TestSplitFileVideoRecord(t *testing.T) {
+	parts, err := Split([]obmodel.InSegment{
+		{Type: "file", Data: json.RawMessage(`{"file":"https://example.com/a.pdf","name":"a.pdf"}`)},
+		{Type: "video", Data: json.RawMessage(`{"file":"base64://dmlkZW8="}`)},
+		{Type: "record", Data: json.RawMessage(`{"file":"https://example.com/a.amr"}`)},
+	})
+	if err != nil {
+		t.Fatalf("拆分失败: %v", err)
+	}
+	if len(parts) != 3 {
+		t.Fatalf("段数为 %d，期望 3", len(parts))
+	}
+
+	want := []struct {
+		kind   string
+		source string
+		name   string
+	}{
+		{kind: "file", source: "https://example.com/a.pdf", name: "a.pdf"},
+		{kind: "video", source: "base64://dmlkZW8="},
+		{kind: "record", source: "https://example.com/a.amr"},
+	}
+
+	for index, item := range want {
+		media := parts[index].Media
+		if media == nil {
+			t.Fatalf("第 %d 段不是媒体: %+v", index, parts[index])
+		}
+		if media.Kind != item.kind || media.Source != item.source || media.Name != item.name {
+			t.Errorf("第 %d 段为 %+v", index, *media)
 		}
 	}
 }
