@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-M0 工程基建的代码部分已完成，等待推送到 GitHub 后由持续集成验证。M1 文本消息闭环尚未开始。
+M1 文本消息闭环的代码已完成，包括云湖订阅客户端、反向 WebSocket 客户端、事件与消息转换、发送接口，以及覆盖完整链路的集成测试。尚未用真实的云湖机器人与 AstrBot 验收，因为缺少令牌与对应环境。仓库仍未推送。
 
 ## 已完成
 
@@ -19,12 +19,26 @@ M0 工程基建的代码部分已完成，等待推送到 GitHub 后由持续集
 
 ### M0 工程基建
 
-- 模块：`go.mod` 声明模块路径 `github.com/Takeoff0518/HelloYunhu` 与 Go 1.27.4，依赖只有 `gopkg.in/yaml.v3`。
-- 命令行入口：`cmd/helloyunhu` 提供 `run`、`version`、`selftest`、`help` 四个子命令。`version` 优先使用链接参数注入的信息，未注入时回退到构建信息中的提交与时间。
-- 配置：`internal/config` 实现 YAML 配置的结构、默认值、加载与校验，示例在 `examples/config.yaml`。校验会一次性返回全部问题。
-- 日志：`internal/logging` 封装 `log/slog`，支持文本与 JSON 两种输出，级别与格式的解析只此一处。
-- 装配：`internal/app` 加载配置、创建日志、遍历实例并等待退出信号。连接逻辑在 M1 接入。
-- 工程配套：`Makefile`、`.golangci.yml`、`.gitattributes`、`.github/workflows/ci.yml`（格式检查、静态检查、竞态测试、三平台构建）。
+- 模块：`go.mod` 声明模块路径 `github.com/Takeoff0518/HelloYunhu` 与 Go 1.27.4。
+- 命令行入口：`run`、`version`、`selftest`、`help` 四个子命令。
+- 配置：`internal/config` 实现 YAML 配置的结构、默认值、加载与校验，示例在 `examples/config.yaml`。
+- 日志：`internal/logging` 封装 `log/slog`，支持文本与 JSON 两种输出。
+- 工程配套：`Makefile`、`.golangci.yml`、`.gitattributes`、`.github/workflows/ci.yml`。
+
+### M1 文本消息闭环
+
+- `internal/yunhu/model`：事件外壳、消息事件、文本内容与发送请求的数据结构。
+- `internal/yunhu/api`：机器人信息与发送消息，令牌追加、响应外壳解析、错误码包装。
+- `internal/yunhu/subscribe`：订阅连接，令牌以查询参数传递，断线按指数退避重连。
+- `internal/onebot/model`：事件、消息段与响应结构，按 aiocqhttp 的硬性要求组织。
+- `internal/onebot/client`：反向 WebSocket 客户端，握手头、回显原样返回、写入互斥与超时。
+- `internal/bridge/identity`：标识映射，消息标识用递增整数，内存实现，接口按持久化设计。
+- `internal/bridge/message`：消息段与云湖消息的相互转换，不支持的类型降级为占位文本。
+- `internal/bridge/event`：云湖事件转 OneBot 事件，含自身消息过滤与生命周期事件。
+- `internal/onebot/action`：发送与查询类接口，未实现的接口返回 1404。
+- `internal/app`：按实例装配两条连接与转发协程，任一实例失败即整体退出。
+- `internal/app` 的集成测试覆盖完整链路：模拟云湖回机器人信息、推送群消息、接收发送请求，模拟框架校验握手、收事件、发调用、收响应。
+- 设计文档：`docs/design/architecture.md` 记录模块划分、数据流、并发模型与错误处理。
 
 ### 提交历史
 
@@ -34,8 +48,15 @@ M0 工程基建的代码部分已完成，等待推送到 GitHub 后由持续集
 | `chore:` | 初始化 Go 模块与命令行骨架 |
 | `feat(logging):` | 增加日志初始化 |
 | `feat(config):` | 增加配置加载与校验 |
-| `feat(app):` | 配置文件与日志接入进程生命周期 |
+| `feat(app):` | 配置与日志接入进程生命周期 |
 | `build:` | 增加构建脚本与持续集成 |
+| `docs(design):` | 记录 M0 完成情况 |
+| `feat(yunhu):` | 增加事件数据结构与接口客户端 |
+| `feat(onebot):` | 增加反向 WebSocket 客户端与协议结构 |
+| `feat(yunhu):` | 增加事件订阅客户端 |
+| `feat(bridge):` | 增加标识映射与事件、消息转换 |
+| `feat(onebot):` | 实现发送与查询类接口调用 |
+| `feat(app):` | 接入订阅连接与框架连接，打通文本消息闭环 |
 
 ## 已确认的决定
 
@@ -57,29 +78,43 @@ M0 工程基建的代码部分已完成，等待推送到 GitHub 后由持续集
 | 日志 | `log/slog`，默认级别 info，默认格式 text |
 | 构建入口 | `Makefile`，持续集成直接调用 `go` 命令 |
 | 持续集成 | GitHub Actions，三平台为 linux/amd64、windows/amd64、darwin/arm64 |
+| 重连策略 | 订阅连接与框架连接均为 1 秒到 30 秒指数退避，连接建立过后重置 |
+| 事件通道容量 | 64，写满时背压到订阅连接的读循环 |
+| 消息内容范围 | 首版只处理文本，媒体与其它类型降级为占位文本 |
+| 标识映射实现 | M1 为内存表，M2 换成 SQLite，接口不变 |
 
-## M0 验收对照
+## 验收对照
+
+M0 的三个验收项：
 
 | 验收项 | 状态 |
 |---|---|
 | `go build ./...` 通过 | 已通过 |
 | 三个平台的构建任务成功 | 未验证，需要推送后由持续集成执行 |
-| 没有配置文件时给出明确错误并退出 | 已通过，`run` 退出码为 1，错误信息包含缺少的文件名 |
+| 没有配置文件时给出明确错误并退出 | 已通过，退出码为 1，错误信息包含文件路径 |
+
+M1 的两个验收项：
+
+| 验收项 | 状态 |
+|---|---|
+| 云湖群内 @机器人 发送文本，框架收到并回复 | 实现完成，集成测试覆盖；真实环境未验证 |
+| 断开任一连接后 30 秒内自动恢复 | 重连实现与模拟断开的单元测试通过；真实网络未验证 |
 
 ## 本地验证记录
 
 - `gofmt -l .` 无输出，`go vet ./...` 通过，`go test ./...` 全部通过。
-- `go test -race ./...` 在本机不可用：竞态检测需要 cgo，本机的 MinGW 8.1 运行时版本过旧，检测二进制启动时以 `0xc0000139` 退出。竞态检测改由持续集成在 Linux 上执行，本地只跑普通测试。
-- `golangci-lint v2.15.0` 通过 `go run` 方式运行，结果为 0 个问题，配置可用。
-- 手动验证：`selftest -config examples/config.yaml` 输出通过；`run` 在缺少 `config.yaml` 时报错退出。
+- 集成测试覆盖两条连接与一次完整收发，模拟服务分别扮演云湖与框架，不依赖外网。
+- `go test -race ./...` 在本机不可用：竞态检测需要 cgo，本机 MinGW 8.1 运行时版本过旧，检测二进制以 `0xc0000139` 退出。竞态检测由持续集成在 Linux 上执行。
+- `golangci-lint v2.15.0` 通过 `go run` 方式运行，结果为 0 个问题。
+- 手动验证：`selftest -config examples/config.yaml` 通过；`run` 在缺少配置时报错退出。
 
 ## 环境
 
 - 操作系统：Windows，工作目录 `E:\code\HelloYunhu`。
 - Go：1.27.4，安装在 `D:\golang`，`GOTOOLCHAIN` 为 `auto`。
-- 模块代理：本机无法直接连接 `sum.golang.org`，下载依赖时需要设置 `GOPROXY=https://goproxy.cn,direct` 与 `GOSUMDB=sum.golang.google.cn`。这只影响本机，不属于项目配置，不要写进代码或脚本。
-- 未安装 GNU make 与 golangci-lint 可执行文件。`Makefile` 与 lint 配置均已按标准写法给出，lint 已通过 `go run` 验证，`Makefile` 尚未实际执行。
-- Git 2.37.0，分支 `main`，`origin` 已指向 GitHub，仓库尚未推送。
+- 模块代理：本机无法直接连接 `sum.golang.org`，下载依赖时需要设置 `GOPROXY=https://goproxy.cn,direct` 与 `GOSUMDB=sum.golang.google.cn`。这只影响本机，不属于项目配置。
+- 未安装 GNU make 与 golangci-lint 可执行文件。lint 已通过 `go run` 验证，`Makefile` 尚未实际执行。
+- Git 2.37.0，分支 `feat/m1-connection-layer`，`origin` 已指向 GitHub，仓库尚未推送。
 
 ## 恢复上下文的步骤
 
@@ -88,17 +123,19 @@ M0 工程基建的代码部分已完成，等待推送到 GitHub 后由持续集
 1. 读 `AGENTS.md`，确认写作要求、工作流与禁忌。
 2. 读本文件，确认当前阶段与下一步。
 3. 读 `docs/design/roadmap.md` 的第 4 节与第 5 节，确认结构与里程碑。
-4. 从「下一步」中第一项未完成的任务继续。
+4. 需要实现细节时读 `docs/design/architecture.md`。
 5. 需要协议细节时查 `docs/research/feasibility-report.md`，不要通读。
 
 ## 下一步
 
-1. 把 `main` 推送到 GitHub，确认持续集成通过。通过后 M0 即完成，在开发计划第 5 节标记。
-2. 从 `main` 创建 `feat/m1-subscribe-client` 之类的分支，开始 M1：云湖订阅客户端与反向 WebSocket 客户端。
-3. M1 开工前先读调研报告第 11 节，把订阅连接的实测项排进计划。
+1. 把 `feat/m1-connection-layer` 合并到 `main` 并推送。合并前确认持续集成通过；推送后由你确认工作流结果。
+2. 有云湖令牌与 AstrBot 环境时做一次真实链路验收，按开发计划 M1 的验收标准走一遍，结果补进本文件。
+3. 开始 M2：私聊事件与发送、SQLite 标识映射、CQ 码编解码、媒体上传与下载、查询类接口。
 
 ## 已知的未决问题
 
-- 云湖侧的 14 项待实测内容（见调研报告第 11 节）尚未开始验证，其中发送接口返回的消息标识位置、私聊接收类型、媒体下载是否需要 Referer 三项会直接影响 M2 的设计。
+- 云湖侧的 14 项待实测内容（见调研报告第 11 节）尚未开始验证。其中接口响应外壳的字段名、发送接口返回的消息标识位置、私聊接收类型、媒体下载是否需要 Referer 会直接影响 M2。
+- 通知类事件尚未转换，当前记录日志后跳过。
+- 心跳事件尚未发送，不影响首个验收框架。
 - 持续集成尚未在 GitHub 上运行过，工作流文件没有经过实际执行验证。
 - 仓库目前是私有状态。转为公开之前，需要确认所有提交中没有凭据，并检查依赖许可证与 GPL-3.0 的兼容性。

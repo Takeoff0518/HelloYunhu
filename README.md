@@ -20,13 +20,17 @@ HelloYunhu 补上的就是这一层。对于机器人框架，它表现为一个
 
 ## 当前状态
 
-项目处于开发初期，尚未发布可用版本。
+项目处于开发早期，尚未发布可用版本。
 
-已经完成的工作是协议调研与可行性验证，包括云湖开放接口的完整梳理、AstrBot 所使用的 aiocqhttp 适配器的行为验证，以及参考项目 Gensokyo 的架构分析。代码实现将按照[开发计划](docs/design/roadmap.md)推进。
+工程基建与文本消息的收发链路已经完成：配置与日志、到云湖的事件订阅连接、到机器人框架的反向 WebSocket 连接、文本消息的双向转换，以及发送与查询类接口。当前版本只处理文本，图片、文件与语音降级为占位文本；通知类事件与心跳尚未接入。
+
+完整的进度与验收状态记录在[项目状态](docs/design/status.md)中，模块划分与数据流见[架构说明](docs/design/architecture.md)。
 
 ## 文档
 
 - [开发计划](docs/design/roadmap.md)
+- [项目状态](docs/design/status.md)
+- [架构说明](docs/design/architecture.md)
 - [文档索引](docs/README.md)
 - [调研材料](docs/research/)
 
