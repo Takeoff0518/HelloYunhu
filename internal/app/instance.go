@@ -12,6 +12,7 @@ import (
 
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/event"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/identity"
+	"github.com/Takeoff0518/HelloYunhu/internal/bridge/media"
 	"github.com/Takeoff0518/HelloYunhu/internal/config"
 	"github.com/Takeoff0518/HelloYunhu/internal/onebot/action"
 	onebotclient "github.com/Takeoff0518/HelloYunhu/internal/onebot/client"
@@ -45,11 +46,15 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 		log.Warn("机器人标识无法解析为整数，已退化为哈希值", "bot_id", info.BotID)
 	}
 
+	// 媒体读取无状态，两个方向共用同一个实例。
+	mediaLoader := &media.Loader{}
+
 	dispatcher := &action.Dispatcher{
 		SelfID:   selfID,
 		Nickname: info.Nickname,
 		API:      apiClient,
 		Messages: messages,
+		Media:    mediaLoader,
 		Logger:   log,
 	}
 
@@ -83,6 +88,7 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 		SelfID:   selfID,
 		BotID:    info.BotID,
 		Messages: messages,
+		Media:    mediaLoader,
 		Logger:   log,
 	}
 

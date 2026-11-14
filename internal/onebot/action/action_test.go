@@ -4,6 +4,7 @@ package action
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/identity"
+	"github.com/Takeoff0518/HelloYunhu/internal/bridge/media"
 	obmodel "github.com/Takeoff0518/HelloYunhu/internal/onebot/model"
 	"github.com/Takeoff0518/HelloYunhu/internal/yunhu/api"
 	yunhumodel "github.com/Takeoff0518/HelloYunhu/internal/yunhu/model"
@@ -31,19 +33,37 @@ func newDispatcher(t *testing.T) (*Dispatcher, *sentRequest) {
 
 	recorder := &sentRequest{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/open-apis/v1/bot/send" {
+		switch r.URL.Path {
+		case "/open-apis/v1/bot/send":
+			var request yunhumodel.SendMessageRequest
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Errorf("解析请求失败: %v", err)
+			}
+			recorder.mu.Lock()
+			recorder.requests = append(recorder.requests, request)
+			recorder.mu.Unlock()
+
+			_, _ = io.WriteString(w, `{"code":0,"data":{"msgId":"0f1e2d3c4b5a69788796a5b4c3d2e1f0"}}`)
+
+		case "/open-apis/v1/group/info":
+			_, _ = io.WriteString(w, `{"code":0,"data":{"groupId":"20001","groupName":"测试群","headcount":42}}`)
+
+		case "/open-apis/v1/bot/groups":
+			_, _ = io.WriteString(w, `{"code":0,"data":{"list":[{"groupId":"20001","groupName":"测试群","headcount":42}]}}`)
+
+		case "/open-apis/v1/group/members":
+			_, _ = io.WriteString(w, `{"code":0,"data":{"members":[{"userId":"10001","nickname":"小明","role":"admin"}]}}`)
+
+		case "/open-apis/v1/image/upload":
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Errorf("解析上传表单失败: %v", err)
+			}
+			_, _ = io.WriteString(w, `{"code":0,"data":{"imageKey":"img-key"}}`)
+
+		default:
 			t.Errorf("请求路径为 %q", r.URL.Path)
+			http.NotFound(w, r)
 		}
-
-		var request yunhumodel.SendMessageRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Errorf("解析请求失败: %v", err)
-		}
-		recorder.mu.Lock()
-		recorder.requests = append(recorder.requests, request)
-		recorder.mu.Unlock()
-
-		_, _ = io.WriteString(w, `{"code":0,"data":{"msgId":"0f1e2d3c4b5a69788796a5b4c3d2e1f0"}}`)
 	}))
 	t.Cleanup(server.Close)
 
@@ -57,6 +77,7 @@ func newDispatcher(t *testing.T) (*Dispatcher, *sentRequest) {
 		Nickname: "机器人",
 		API:      client,
 		Messages: identity.NewMemory(),
+		Media:    &media.Loader{HTTPClient: server.Client()},
 	}, recorder
 }
 
@@ -210,6 +231,48 @@ func TestSendReplyWithUnknownIDIsIgnored(t *testing.T) {
 	}
 }
 
+func TestSendImageUploadsFirst(t *testing.T) {
+	dispatcher, recorder := newDispatcher(t)
+
+	params := map[string]any{
+		"group_id": 20001,
+		"message": []map[string]any{
+			{"type": "image", "data": map[string]any{"file": "base64://" + base64.StdEncoding.EncodeToString([]byte("image-bytes"))}},
+		},
+	}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		t.Fatalf("编码参数失败: %v", err)
+	}
+
+	data, err := dispatcher.Handle(context.Background(), "send_group_msg", raw)
+	if err != nil {
+		t.Fatalf("处理失败: %v", err)
+	}
+
+	request := recorder.last(t)
+	if request.ContentType != yunhumodel.ContentTypeImage {
+		t.Errorf("内容类型为 %q", request.ContentType)
+	}
+	content, ok := request.Content.(map[string]any)
+	if !ok || content["imageKey"] != "img-key" {
+		t.Errorf("内容为 %#v", request.Content)
+	}
+	if payload, ok := data.(map[string]any); !ok || payload["message_id"] != int64(1) {
+		t.Errorf("返回数据为 %#v", data)
+	}
+}
+
+func TestSendImageWithoutLoader(t *testing.T) {
+	dispatcher, _ := newDispatcher(t)
+	dispatcher.Media = nil
+
+	params := json.RawMessage(`{"group_id":20001,"message":[{"type":"image","data":{"file":"base64://eA=="}}]}`)
+	if _, err := dispatcher.Handle(context.Background(), "send_group_msg", params); err == nil {
+		t.Fatal("没有媒体读取器时应返回错误")
+	}
+}
+
 func TestSendBadParams(t *testing.T) {
 	dispatcher, _ := newDispatcher(t)
 
@@ -243,7 +306,7 @@ func TestSendBadParams(t *testing.T) {
 func TestUnimplementedAction(t *testing.T) {
 	dispatcher, _ := newDispatcher(t)
 
-	_, err := dispatcher.Handle(context.Background(), "get_group_list", json.RawMessage(`{}`))
+	_, err := dispatcher.Handle(context.Background(), "set_group_ban", json.RawMessage(`{}`))
 
 	var actionErr *obmodel.ActionError
 	if !errors.As(err, &actionErr) {
@@ -252,8 +315,71 @@ func TestUnimplementedAction(t *testing.T) {
 	if actionErr.Retcode != obmodel.RetcodeNotFound {
 		t.Errorf("返回码为 %d，期望 1404", actionErr.Retcode)
 	}
-	if !strings.Contains(actionErr.Wording, "get_group_list") {
+	if !strings.Contains(actionErr.Wording, "set_group_ban") {
 		t.Errorf("说明为 %q", actionErr.Wording)
+	}
+}
+
+func TestGroupActions(t *testing.T) {
+	dispatcher, _ := newDispatcher(t)
+
+	info, err := dispatcher.Handle(context.Background(), "get_group_info", json.RawMessage(`{"group_id":20001}`))
+	if err != nil {
+		t.Fatalf("get_group_info 失败: %v", err)
+	}
+	group := info.(map[string]any)
+	if group["group_name"] != "测试群" || group["member_count"] != 42 {
+		t.Errorf("群信息为 %v", group)
+	}
+
+	list, err := dispatcher.Handle(context.Background(), "get_group_list", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("get_group_list 失败: %v", err)
+	}
+	groups, ok := list.([]map[string]any)
+	if !ok || len(groups) != 1 || groups[0]["group_id"] != int64(20001) {
+		t.Errorf("群列表为 %#v", list)
+	}
+
+	member, err := dispatcher.Handle(context.Background(), "get_group_member_info", json.RawMessage(`{"group_id":20001,"user_id":10001}`))
+	if err != nil {
+		t.Fatalf("get_group_member_info 失败: %v", err)
+	}
+	person := member.(map[string]any)
+	if person["nickname"] != "小明" || person["role"] != "admin" {
+		t.Errorf("成员信息为 %v", person)
+	}
+
+	stranger, err := dispatcher.Handle(context.Background(), "get_stranger_info", json.RawMessage(`{"user_id":10001}`))
+	if err != nil {
+		t.Fatalf("get_stranger_info 失败: %v", err)
+	}
+	if stranger.(map[string]any)["user_id"] != int64(10001) {
+		t.Errorf("陌生人信息为 %v", stranger)
+	}
+}
+
+// TestGroupMemberInfoToleratesPermissionError 说明成员权限关闭时仍然返回成功，
+// 否则框架会丢弃 @ 消息段，群里 @ 机器人无法唤醒。
+func TestGroupMemberInfoToleratesPermissionError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"code":403,"msg":"没有权限"}`)
+	}))
+	defer server.Close()
+
+	client, err := api.New(api.Config{BaseURL: server.URL + "/open-apis/v1", Token: "token", HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatalf("创建接口客户端失败: %v", err)
+	}
+
+	dispatcher := &Dispatcher{SelfID: 1001, API: client, Messages: identity.NewMemory()}
+
+	data, err := dispatcher.Handle(context.Background(), "get_group_member_info", json.RawMessage(`{"group_id":20001,"user_id":10001}`))
+	if err != nil {
+		t.Fatalf("权限不足时应返回成功: %v", err)
+	}
+	if payload, ok := data.(map[string]any); !ok || len(payload) != 0 {
+		t.Errorf("数据为空对象时框架才会补空昵称，实际为 %#v", data)
 	}
 }
 

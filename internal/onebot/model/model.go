@@ -114,6 +114,12 @@ type (
 	ReplyData struct {
 		ID int64 `json:"id"`
 	}
+	// ImageData 是图片段。File 可以是 base64://、网络地址或本地路径。
+	ImageData struct {
+		File string `json:"file"`
+		URL  string `json:"url,omitempty"`
+		Name string `json:"name,omitempty"`
+	}
 )
 
 // Text 构造文本段。
