@@ -4,8 +4,8 @@
 //
 // 云湖一条消息只有一个内容类型，OneBot 的一条消息可以包含多个消息段，因此两个
 // 方向的转换都不是一一对应：接收方向需要把内容拆成消息段，发送方向需要拆分后
-// 多次发送。首版只处理文本与 @，媒体在 M2 接入，其余类型降级为占位文本，保证
-// 用户至少能看到提示。
+// 多次发送。首版处理文本、@、引用与图片，其余类型降级为占位文本，保证用户至少
+// 能看到提示。
 package message
 
 import (
@@ -32,7 +32,7 @@ const (
 // IncomingText 把云湖文本消息转换为 OneBot 消息段。
 //
 // 云湖的 @ 只记录用户标识，正文里是被 @ 的人的昵称，两者没有直接对应关系，
-// 因此 @ 段统一放在正文之前。M2 取得群成员信息后可以还原 @ 在正文中的位置。
+// 因此 @ 段统一放在正文之前。取得群成员信息后可以还原 @ 在正文中的位置。
 func IncomingText(content *model.TextContent) obmodel.OutMessage {
 	segments := make(obmodel.OutMessage, 0, len(content.At)+1)
 
@@ -43,6 +43,17 @@ func IncomingText(content *model.TextContent) obmodel.OutMessage {
 
 	segments = append(segments, obmodel.Text(content.Text))
 	return segments
+}
+
+// IncomingImage 构造图片消息段。
+//
+// AstrBot 在发送图片时使用 base64，接收时同样接受 base64 与网络地址。调用方
+// 优先给出 base64，下载失败时退化为网络地址。
+func IncomingImage(file, url, name string) obmodel.OutSegment {
+	return obmodel.OutSegment{
+		Type: "image",
+		Data: obmodel.ImageData{File: file, URL: url, Name: name},
+	}
 }
 
 // IncomingPlaceholder 为暂不支持的内容类型生成占位文本。
@@ -65,43 +76,69 @@ func IncomingPlaceholder(contentType string) obmodel.OutMessage {
 	return obmodel.OutMessage{obmodel.Text(text)}
 }
 
-// OutgoingMessage 是由 OneBot 消息段整理出的待发送内容。
-type OutgoingMessage struct {
+// MediaPart 描述一条待上传的媒体消息。
+type MediaPart struct {
+	// Kind 是消息段类型，目前只有 image。
+	Kind string
+	// Source 是 OneBot 消息段给出的 file 值，可能是 base64、网络地址或本地路径。
+	Source string
+	// Name 是建议的文件名，为空时由读取环节决定。
+	Name string
+}
+
+// Part 是拆分后的一段待发送内容，对应一条云湖消息。
+type Part struct {
 	// Text 是消息正文，@ 与占位文本都写在正文里。
 	Text string
 	// At 是被 @ 的用户标识列表，作为云湖的 content.at 传递。
 	At []string
 	// ReplyMessageID 是引用回复的目标消息，0 表示没有引用。
 	ReplyMessageID int64
+	// Media 非空时表示这一段是媒体消息，Text 为空。
+	Media *MediaPart
 }
 
-// FromOneBot 把 OneBot 消息段整理成一条云湖文本消息。
+// Split 把 OneBot 消息段拆成若干待发送部分。
 //
-// 首版只处理文本、@ 与引用，其余类型写成占位文本；任何一个消息段解析失败都返回
-// 错误，由调用方如实回给框架，而不是发出一条残缺的消息。
-func FromOneBot(segments []obmodel.InSegment) (OutgoingMessage, error) {
-	var result OutgoingMessage
-	var builder strings.Builder
+// 连续的文本、@ 与引用合并成一条文本消息；图片单独成为一条媒体消息；其余类型
+// 按占位文本并入文本消息。任何一个消息段解析失败都返回错误，由调用方如实回给
+// 框架，而不是发出残缺的消息。
+func Split(segments []obmodel.InSegment) ([]Part, error) {
+	var (
+		parts   []Part
+		current Part
+		builder strings.Builder
+	)
+
+	flush := func() {
+		if builder.Len() == 0 && len(current.At) == 0 {
+			return
+		}
+		current.Text = builder.String()
+		parts = append(parts, current)
+		current = Part{}
+		builder.Reset()
+	}
 
 	for index, segment := range segments {
 		switch segment.Type {
 		case "text":
 			var data obmodel.TextData
 			if err := json.Unmarshal(segment.Data, &data); err != nil {
-				return OutgoingMessage{}, fmt.Errorf("第 %d 个文本段解析失败: %w", index, err)
+				return nil, fmt.Errorf("第 %d 个文本段解析失败: %w", index, err)
 			}
 			builder.WriteString(data.Text)
 
 		case "at":
 			qq, all, err := parseAtSegment(segment.Data)
 			if err != nil {
-				return OutgoingMessage{}, fmt.Errorf("第 %d 个 @ 段解析失败: %w", index, err)
+				return nil, fmt.Errorf("第 %d 个 @ 段解析失败: %w", index, err)
 			}
 			if all {
 				builder.WriteString("@全体成员")
 				continue
 			}
-			result.At = append(result.At, strconv.FormatInt(qq, 10))
+			current.At = append(current.At, strconv.FormatInt(qq, 10))
 			// 云湖要求正文里出现 @昵称，没有成员信息时先用标识代替。
 			builder.WriteString("@" + strconv.FormatInt(qq, 10))
 			builder.WriteString(" ")
@@ -109,14 +146,24 @@ func FromOneBot(segments []obmodel.InSegment) (OutgoingMessage, error) {
 		case "reply":
 			var data obmodel.ReplyData
 			if err := json.Unmarshal(segment.Data, &data); err != nil {
-				return OutgoingMessage{}, fmt.Errorf("第 %d 个引用段解析失败: %w", index, err)
+				return nil, fmt.Errorf("第 %d 个引用段解析失败: %w", index, err)
 			}
-			if result.ReplyMessageID == 0 {
-				result.ReplyMessageID = data.ID
+			// 引用的目标只挂在当前这条消息上，避免一次发送多段时每段都带引用。
+			if current.ReplyMessageID == 0 {
+				current.ReplyMessageID = data.ID
 			}
 
 		case "image":
-			builder.WriteString(PlaceholderImage)
+			var data obmodel.ImageData
+			if err := json.Unmarshal(segment.Data, &data); err != nil {
+				return nil, fmt.Errorf("第 %d 个图片段解析失败: %w", index, err)
+			}
+			if data.File == "" {
+				return nil, fmt.Errorf("第 %d 个图片段缺少 file", index)
+			}
+			flush()
+			parts = append(parts, Part{Media: &MediaPart{Kind: "image", Source: data.File, Name: data.Name}})
+
 		case "file":
 			builder.WriteString(PlaceholderFile)
 		case "video":
@@ -132,12 +179,13 @@ func FromOneBot(segments []obmodel.InSegment) (OutgoingMessage, error) {
 		}
 	}
 
-	result.Text = builder.String()
-	if result.Text == "" && len(result.At) == 0 {
-		return OutgoingMessage{}, fmt.Errorf("消息内容为空")
+	flush()
+
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("消息内容为空")
 	}
 
-	return result, nil
+	return parts, nil
 }
 
 // parseAtSegment 解析 @ 段的用户标识。

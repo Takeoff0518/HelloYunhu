@@ -4,11 +4,16 @@ package event
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/identity"
+	"github.com/Takeoff0518/HelloYunhu/internal/bridge/media"
 	obmodel "github.com/Takeoff0518/HelloYunhu/internal/onebot/model"
 	"github.com/Takeoff0518/HelloYunhu/internal/yunhu/model"
 )
@@ -147,7 +152,8 @@ func TestConvertPrivateMessage(t *testing.T) {
 	}
 }
 
-func TestConvertImageDegradesToPlaceholder(t *testing.T) {
+// TestConvertImageWithoutLoader 说明没有媒体读取器时图片段直接给出网络地址。
+func TestConvertImageWithoutLoader(t *testing.T) {
 	converter := newConverter()
 
 	got, ok, err := converter.Convert(context.Background(), parse(t, imageMessage))
@@ -159,12 +165,72 @@ func TestConvertImageDegradesToPlaceholder(t *testing.T) {
 	if len(event.Message) != 1 {
 		t.Fatalf("消息段数量为 %d", len(event.Message))
 	}
-	data, isText := event.Message[0].Data.(obmodel.TextData)
-	if !isText {
+	data, isImage := event.Message[0].Data.(obmodel.ImageData)
+	if !isImage {
 		t.Fatalf("消息段为 %T", event.Message[0].Data)
 	}
-	if data.Text != "[图片]" {
-		t.Errorf("占位文本为 %q", data.Text)
+	if data.File != "https://cdn.example.com/a.png" || data.URL != "https://cdn.example.com/a.png" {
+		t.Errorf("图片段为 %+v", data)
+	}
+	if event.RawMessage != "[图片]" {
+		t.Errorf("原始消息为 %q", event.RawMessage)
+	}
+}
+
+// TestConvertImageInlinesBase64 说明配置了媒体读取器时图片会下载并转成 base64。
+func TestConvertImageInlinesBase64(t *testing.T) {
+	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("image-bytes"))
+	}))
+	defer imageServer.Close()
+
+	payload := strings.ReplaceAll(imageMessage, "https://cdn.example.com/a.png", imageServer.URL+"/a.png")
+
+	converter := newConverter()
+	converter.Media = &media.Loader{HTTPClient: imageServer.Client()}
+
+	got, ok, err := converter.Convert(context.Background(), parse(t, payload))
+	if err != nil || !ok {
+		t.Fatalf("转换结果为 %v, %v", ok, err)
+	}
+
+	event := got.(*obmodel.MessageEvent)
+	data, isImage := event.Message[0].Data.(obmodel.ImageData)
+	if !isImage {
+		t.Fatalf("消息段为 %T", event.Message[0].Data)
+	}
+	if data.File != "base64://"+base64.StdEncoding.EncodeToString([]byte("image-bytes")) {
+		t.Errorf("图片段为 %+v", data)
+	}
+	if data.URL != imageServer.URL+"/a.png" {
+		t.Errorf("原始地址为 %q", data.URL)
+	}
+}
+
+// TestConvertImageFallbackToURL 说明下载失败时退化为地址而不是丢掉消息。
+func TestConvertImageFallbackToURL(t *testing.T) {
+	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer imageServer.Close()
+
+	payload := strings.ReplaceAll(imageMessage, "https://cdn.example.com/a.png", imageServer.URL+"/a.png")
+
+	converter := newConverter()
+	converter.Media = &media.Loader{HTTPClient: imageServer.Client()}
+
+	got, ok, err := converter.Convert(context.Background(), parse(t, payload))
+	if err != nil || !ok {
+		t.Fatalf("转换结果为 %v, %v", ok, err)
+	}
+
+	event := got.(*obmodel.MessageEvent)
+	data, isImage := event.Message[0].Data.(obmodel.ImageData)
+	if !isImage {
+		t.Fatalf("消息段为 %T", event.Message[0].Data)
+	}
+	if data.File != imageServer.URL+"/a.png" {
+		t.Errorf("图片段为 %+v", data)
 	}
 }
 
