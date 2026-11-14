@@ -170,19 +170,10 @@ func (e *envelope) message() string {
 
 // do 发起一次请求并解析响应。
 func (c *Client) do(ctx context.Context, method, path, op string, query url.Values, body any) (json.RawMessage, error) {
-	endpoint, err := url.Parse(c.baseURL + path)
+	endpoint, err := c.endpoint(path, query)
 	if err != nil {
-		return nil, fmt.Errorf("拼接接口地址 %s: %w", op, err)
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
-
-	values := endpoint.Query()
-	values.Set("token", c.token)
-	for key, items := range query {
-		for _, item := range items {
-			values.Add(key, item)
-		}
-	}
-	endpoint.RawQuery = values.Encode()
 
 	var payload io.Reader
 	if body != nil {
@@ -193,7 +184,7 @@ func (c *Client) do(ctx context.Context, method, path, op string, query url.Valu
 		payload = bytes.NewReader(encoded)
 	}
 
-	request, err := http.NewRequestWithContext(ctx, method, endpoint.String(), payload)
+	request, err := http.NewRequestWithContext(ctx, method, endpoint, payload)
 	if err != nil {
 		return nil, fmt.Errorf("构造 %s 请求: %w", op, err)
 	}
@@ -201,6 +192,32 @@ func (c *Client) do(ctx context.Context, method, path, op string, query url.Valu
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
+
+	return c.execute(request, op)
+}
+
+// endpoint 拼接接口地址，并追加令牌与调用方给出的查询参数。
+func (c *Client) endpoint(path string, query url.Values) (string, error) {
+	parsed, err := url.Parse(c.baseURL + path)
+	if err != nil {
+		return "", fmt.Errorf("拼接接口地址: %w", err)
+	}
+
+	values := parsed.Query()
+	values.Set("token", c.token)
+	for key, items := range query {
+		for _, item := range items {
+			values.Add(key, item)
+		}
+	}
+	parsed.RawQuery = values.Encode()
+
+	return parsed.String(), nil
+}
+
+// execute 发出请求并解析统一响应。
+func (c *Client) execute(request *http.Request, op string) (json.RawMessage, error) {
+	request.Header.Set("Accept", "application/json")
 
 	response, err := c.http.Do(request)
 	if err != nil {
