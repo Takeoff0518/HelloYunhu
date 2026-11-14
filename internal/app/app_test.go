@@ -124,11 +124,11 @@ func TestRunEndToEnd(t *testing.T) {
 
 	// 模拟云湖：机器人信息、发送消息与订阅连接。
 	yunhuServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/open-apis/v1/bot/info":
+		switch r.URL.Path {
+		case "/open-apis/v1/bot/info":
 			_, _ = w.Write([]byte(`{"code":0,"data":{"botId":"1001","nickname":"机器人"}}`))
 
-		case r.URL.Path == "/open-apis/v1/bot/send":
+		case "/open-apis/v1/bot/send":
 			var request map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 				t.Errorf("解析发送请求失败: %v", err)
@@ -136,7 +136,7 @@ func TestRunEndToEnd(t *testing.T) {
 			sendRequests <- request
 			_, _ = w.Write([]byte(`{"code":0,"data":{"msgId":"1f1e2d3c4b5a69788796a5b4c3d2e1f0"}}`))
 
-		case r.URL.Path == "/subscribe":
+		case "/subscribe":
 			if got := r.URL.Query().Get("token"); got != "test-token" {
 				t.Errorf("订阅令牌为 %q", got)
 			}

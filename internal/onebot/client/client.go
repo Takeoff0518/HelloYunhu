@@ -135,12 +135,13 @@ func (c *Client) Run(ctx context.Context) error {
 
 	for {
 		if ctx.Err() != nil {
-			return nil
+			return nil //nolint:nilerr // 上下文取消按正常退出处理
 		}
 
 		established, err := c.connect(ctx)
 		if ctx.Err() != nil {
-			return nil
+			// 上下文取消会强制关闭连接，读循环必然带错误返回，这里属于正常退出。
+			return nil //nolint:nilerr // 取消不是故障
 		}
 
 		c.logger.Warn("框架连接中断，准备重连", "err", err, "retry_in", delay.String())
@@ -181,9 +182,14 @@ func (c *Client) connect(ctx context.Context) (bool, error) {
 	conn, response, err := c.dialer.DialContext(ctx, c.cfg.URL, header)
 	if err != nil {
 		if response != nil {
+			_ = response.Body.Close()
 			return false, fmt.Errorf("握手失败，状态码 %d: %w", response.StatusCode, err)
 		}
 		return false, fmt.Errorf("连接框架: %w", err)
+	}
+	if response != nil {
+		// gorilla 在握手成功后已经把响应体读完，这里显式关闭以便 linter 与读者确认。
+		_ = response.Body.Close()
 	}
 	defer func() {
 		_ = conn.Close()
