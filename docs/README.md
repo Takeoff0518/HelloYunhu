@@ -1,0 +1,27 @@
+# 文档索引
+
+## 设计文档
+
+- [开发计划](design/roadmap.md)：项目目标、范围、设计取舍、仓库结构、里程碑与工程规范。
+- [项目状态](design/status.md)：当前进度、下一步任务与未决问题，每次工作结束时更新。
+- 架构设计（`design/architecture.md`）：模块划分、数据流与并发模型，随实现同步编写。
+- 协议映射说明（`design/protocol-mapping.md`）：事件、接口、消息段与标识的完整映射表，随实现同步编写。
+- 标识映射说明（`design/id-mapping.md`）：映射算法、表结构与恢复方式，M2 阶段编写。
+
+## 协作约定
+
+- [AGENTS.md](../AGENTS.md)：写作要求、工作流、代码规范与禁忌，参与开发前必读。
+
+## 使用文档
+
+- 快速开始（`guides/quickstart.md`）：安装、配置与首次接入，M4 阶段编写。
+- 配置说明（`guides/configuration.md`）：全部配置项，M4 阶段编写。
+- 常见问题（`guides/troubleshooting.md`）：排查方法，M4 阶段编写。
+
+## 调研材料
+
+这三份文档是设计决策的依据，记录的是 2026 年 11 月的调研结论，之后不再修改。
+
+- [可行性调研](research/feasibility-report.md)：云湖开放接口与事件结构、平台限制、OneBot 侧的要求、映射草案、风险与待验证事项。
+- [生态调研](research/ecosystem-report.md)：云湖相关 SDK、框架适配器与同类项目的现状。
+- [参考项目分析](research/gensokyo-notes.md)：Gensokyo 的架构、标识映射算法与工程经验。
