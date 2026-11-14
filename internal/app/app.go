@@ -3,7 +3,8 @@
 // Package app 负责装配配置、日志与各子系统，并管理进程的生命周期。
 //
 // 这一层是唯一了解全部组件的包。协议转换、连接维护与存储实现都不了解彼此之外
-// 的部分，由这里接在一起。
+// 的部分，由这里接在一起。一个进程可以运行多个机器人实例，实例之间不共享运行
+// 状态，任何一个实例失败都会让整个进程退出。
 package app
 
 import (
@@ -11,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 
 	"github.com/Takeoff0518/HelloYunhu/internal/config"
 	"github.com/Takeoff0518/HelloYunhu/internal/logging"
@@ -27,9 +29,10 @@ type Options struct {
 	LogOutput io.Writer
 }
 
-// Run 加载配置、初始化日志，并运行到上下文结束。
+// Run 加载配置、初始化日志并运行各实例，直到上下文结束。
 //
 // 配置有任何一项不合法时直接返回错误，进程由调用方负责退出，不进入运行状态。
+// 实例运行中出错时取消其它实例并返回该错误，由调用方打印与退出。
 func Run(ctx context.Context, opt Options) error {
 	cfg, err := config.Load(opt.ConfigPath)
 	if err != nil {
@@ -48,17 +51,35 @@ func Run(ctx context.Context, opt Options) error {
 		"instances", len(cfg.Instances),
 	)
 
-	for _, instance := range cfg.Instances {
-		logger.Info("装载机器人实例",
-			"instance", instance.Name,
-			"onebot_url", instance.OneBot.URL,
-		)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var (
+		wg      sync.WaitGroup
+		errOnce sync.Once
+		runErr  error
+	)
+
+	for _, instanceCfg := range cfg.Instances {
+		wg.Add(1)
+		go func(instanceCfg config.Instance) {
+			defer wg.Done()
+
+			if err := runInstance(ctx, instanceCfg, cfg, logger); err != nil {
+				errOnce.Do(func() {
+					runErr = fmt.Errorf("实例 %s: %w", instanceCfg.Name, err)
+				})
+				cancel()
+			}
+		}(instanceCfg)
 	}
 
-	// 连接逻辑在 M1 接入，此处先保留运行与退出的完整路径。
-	logger.Warn("当前构建尚未实现连接逻辑，进程不会收发任何消息")
-
 	<-ctx.Done()
+	wg.Wait()
+
+	if runErr != nil {
+		return runErr
+	}
 
 	logger.Info("进程结束")
 	return nil
