@@ -47,11 +47,11 @@
 | `get_group_member_info` | `GET /group/members` 扫描，失败返回空数据 | 已实现 |
 | `get_group_member_list` | `GET /group/members` 分页聚合 | 已实现 |
 | `get_stranger_info` | 云湖无对应接口，返回空昵称 | 已实现 |
+| `get_msg` | 从最近消息缓存回放，未命中返回 1404 | 已实现 |
 | `.handle_quick_operation` | 直接返回成功 | 已实现 |
-| `get_msg` | 需要消息缓存，尚未实现 | 未实现 |
-| `delete_msg` | `POST /bot/recall` | 未实现 |
-| `set_group_ban` | `POST /group/gag-member` | 未实现 |
-| `set_group_kick` | `POST /group/remove-member` | 未实现 |
+| `delete_msg` | `POST /bot/recall` | 未实现，M3 |
+| `set_group_ban` | `POST /group/gag-member` | 未实现，M3 |
+| `set_group_kick` | `POST /group/remove-member` | 未实现，M3 |
 | `get_image` | 下载到本地 | 未实现 |
 | 其它 | 返回 `retcode=1404` 与说明 | 默认行为 |
 
@@ -65,7 +65,9 @@
 |---|---|---|
 | `text` | `at` 段加 `text` 段 | @ 段统一放在正文之前，正文保留原文 |
 | `image` | `image` 段 | 先下载再以 `base64://` 给出，失败时给出网络地址 |
-| `file`、`video`、`audio` | 文本占位 | 尚未接入 |
+| `file` | `file` 段 | 带地址与文件名，不下载正文 |
+| `video` | `video` 段 | 带地址 |
+| `audio` | `record` 段 | 带地址，云湖没有语音发送能力 |
 | 其它 | 文本占位 | `[暂不支持的消息类型: x]` |
 
 发送方向：
@@ -76,10 +78,14 @@
 | `at` | `content.at` 加正文中的 @标识 | 缺少成员昵称时用标识代替 |
 | `reply` | `parentId` | 反查映射表，查不到时忽略引用 |
 | `image` | 上传后作为图片消息发送 | 支持 base64、网络地址与本地路径 |
-| `file`、`video`、`record` | 文本占位 | 尚未接入 |
+| `file` | 上传后作为文件消息发送 | 带文件名与体积 |
+| `video` | 上传后作为视频消息发送 | |
+| `record` | 上传后按文件消息发送 | 云湖没有语音发送能力，用户点开文件收听 |
 | `face`、`json`、`node` 等 | 文本占位 | 保证不丢消息 |
 
-一条 OneBot 消息可能被拆成多条云湖消息：连续的文本与 @ 合并为一条，每个图片单独一条。引用的目标只挂在第一条消息上。
+一条 OneBot 消息可能被拆成多条云湖消息：连续的文本与 @ 合并为一条，每个媒体段单独一条。引用的目标只挂在第一条消息上。
+
+发送接口的 `message` 参数同时接受消息段数组与 CQ 码字符串，字符串按 CQ 码解析后再走同一套拆分逻辑。事件方向固定使用消息段数组，框架侧不需要额外配置。
 
 ## 4. 标识映射
 
@@ -101,3 +107,4 @@
 3. 群列表与群成员列表的包装字段，当前接受直接数组与 `list`、`items`、`members`、`groups`、`data`。
 4. 群成员的字段名与角色取值。
 5. 图片下载是否需要来源信息，当前直接请求，失败时退化为地址。
+6. 文件与视频发送所需的字段组合，当前按 `fileKey` 加文件名与体积、`videoKey` 组织。
