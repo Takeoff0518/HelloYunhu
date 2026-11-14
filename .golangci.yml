@@ -1,0 +1,30 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gocritic
+    - misspell
+    - nilerr
+    - unconvert
+    - whitespace
+  exclusions:
+    # 标准库与常见误报的豁免规则，例如 fmt.Fprint 向标准输出写的错误不做检查
+    presets:
+      - std-error-handling
+      - common-false-positives
+    rules:
+      # 测试里允许忽略部分错误，断言失败已经由 testing 报告
+      - path: _test\.go
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
