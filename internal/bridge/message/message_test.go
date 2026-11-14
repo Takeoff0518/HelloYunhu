@@ -31,6 +31,21 @@ func TestIncomingText(t *testing.T) {
 	}
 }
 
+func TestIncomingImage(t *testing.T) {
+	segment := IncomingImage("base64://abc", "https://cdn.example.com/a.png", "a.png")
+
+	if segment.Type != "image" {
+		t.Fatalf("消息段类型为 %q", segment.Type)
+	}
+	data, ok := segment.Data.(obmodel.ImageData)
+	if !ok {
+		t.Fatalf("消息段数据为 %T", segment.Data)
+	}
+	if data.File != "base64://abc" || data.URL != "https://cdn.example.com/a.png" || data.Name != "a.png" {
+		t.Errorf("图片段为 %+v", data)
+	}
+}
+
 func TestIncomingPlaceholder(t *testing.T) {
 	tests := []struct {
 		contentType string
@@ -68,102 +83,160 @@ func segment(t *testing.T, typ string, data any) obmodel.InSegment {
 	return obmodel.InSegment{Type: typ, Data: raw}
 }
 
-func TestFromOneBotTextAtReply(t *testing.T) {
-	segments := []obmodel.InSegment{
+func TestSplitTextAtReply(t *testing.T) {
+	parts, err := Split([]obmodel.InSegment{
 		segment(t, "reply", obmodel.ReplyData{ID: 42}),
 		segment(t, "at", obmodel.AtData{QQ: 10001}),
 		segment(t, "text", obmodel.TextData{Text: "你好"}),
+	})
+	if err != nil {
+		t.Fatalf("拆分失败: %v", err)
 	}
 
-	out, err := FromOneBot(segments)
-	if err != nil {
-		t.Fatalf("转换失败: %v", err)
+	if len(parts) != 1 {
+		t.Fatalf("段数为 %d，期望 1", len(parts))
 	}
-	if out.ReplyMessageID != 42 {
-		t.Errorf("引用目标为 %d，期望 42", out.ReplyMessageID)
+	if parts[0].ReplyMessageID != 42 {
+		t.Errorf("引用目标为 %d", parts[0].ReplyMessageID)
 	}
-	if len(out.At) != 1 || out.At[0] != "10001" {
-		t.Errorf("@ 列表为 %v", out.At)
+	if len(parts[0].At) != 1 || parts[0].At[0] != "10001" {
+		t.Errorf("@ 列表为 %v", parts[0].At)
 	}
-	if out.Text != "@10001 你好" {
-		t.Errorf("正文为 %q", out.Text)
+	if parts[0].Text != "@10001 你好" {
+		t.Errorf("正文为 %q", parts[0].Text)
 	}
 }
 
-func TestFromOneBotAtAsString(t *testing.T) {
-	segments := []obmodel.InSegment{
+func TestSplitSplitsAroundImage(t *testing.T) {
+	parts, err := Split([]obmodel.InSegment{
+		segment(t, "reply", obmodel.ReplyData{ID: 7}),
+		segment(t, "text", obmodel.TextData{Text: "看图"}),
+		segment(t, "image", obmodel.ImageData{File: "https://example.com/a.png", Name: "a.png"}),
+		segment(t, "text", obmodel.TextData{Text: "好看吗"}),
+	})
+	if err != nil {
+		t.Fatalf("拆分失败: %v", err)
+	}
+
+	if len(parts) != 3 {
+		t.Fatalf("段数为 %d，期望 3", len(parts))
+	}
+
+	if parts[0].Text != "看图" || parts[0].ReplyMessageID != 7 || parts[0].Media != nil {
+		t.Errorf("第一段为 %+v", parts[0])
+	}
+	if parts[1].Media == nil {
+		t.Fatalf("第二段应为媒体: %+v", parts[1])
+	}
+	if parts[1].Media.Kind != "image" || parts[1].Media.Source != "https://example.com/a.png" {
+		t.Errorf("媒体段为 %+v", parts[1].Media)
+	}
+	if parts[2].Text != "好看吗" {
+		t.Errorf("第三段正文为 %q", parts[2].Text)
+	}
+}
+
+func TestSplitImageOnly(t *testing.T) {
+	parts, err := Split([]obmodel.InSegment{
+		segment(t, "image", obmodel.ImageData{File: "base64://abc"}),
+	})
+	if err != nil {
+		t.Fatalf("拆分失败: %v", err)
+	}
+	if len(parts) != 1 || parts[0].Media == nil {
+		t.Fatalf("段为 %+v", parts)
+	}
+	if parts[0].Text != "" || len(parts[0].At) != 0 {
+		t.Errorf("媒体段不应带文本: %+v", parts[0])
+	}
+}
+
+func TestSplitAtAsStringAndAll(t *testing.T) {
+	parts, err := Split([]obmodel.InSegment{
 		{Type: "at", Data: json.RawMessage(`{"qq":"10001"}`)},
-		segment(t, "text", obmodel.TextData{Text: "你好"}),
-	}
-
-	out, err := FromOneBot(segments)
-	if err != nil {
-		t.Fatalf("转换失败: %v", err)
-	}
-	if len(out.At) != 1 || out.At[0] != "10001" {
-		t.Errorf("@ 列表为 %v", out.At)
-	}
-}
-
-func TestFromOneBotAtAll(t *testing.T) {
-	segments := []obmodel.InSegment{
 		{Type: "at", Data: json.RawMessage(`{"qq":"all"}`)},
-		segment(t, "text", obmodel.TextData{Text: "开会了"}),
-	}
-
-	out, err := FromOneBot(segments)
+		segment(t, "text", obmodel.TextData{Text: "开会"}),
+	})
 	if err != nil {
-		t.Fatalf("转换失败: %v", err)
+		t.Fatalf("拆分失败: %v", err)
 	}
-	if len(out.At) != 0 {
-		t.Errorf("@ 列表应为空，实际为 %v", out.At)
+	if len(parts) != 1 {
+		t.Fatalf("段数为 %d", len(parts))
 	}
-	if !strings.Contains(out.Text, "全体成员") {
-		t.Errorf("正文为 %q，期望包含全体成员", out.Text)
+	if len(parts[0].At) != 1 || parts[0].At[0] != "10001" {
+		t.Errorf("@ 列表为 %v", parts[0].At)
+	}
+	if !strings.Contains(parts[0].Text, "全体成员") {
+		t.Errorf("正文为 %q", parts[0].Text)
 	}
 }
 
-func TestFromOneBotPlaceholders(t *testing.T) {
-	segments := []obmodel.InSegment{
-		{Type: "image", Data: json.RawMessage(`{"file":"base64://..."}`)},
-		{Type: "file", Data: json.RawMessage(`{"file":"report.pdf"}`)},
+func TestSplitPlaceholders(t *testing.T) {
+	parts, err := Split([]obmodel.InSegment{
 		{Type: "face", Data: json.RawMessage(`{"id":"1"}`)},
 		{Type: "node", Data: json.RawMessage(`{}`)},
-	}
-
-	out, err := FromOneBot(segments)
+	})
 	if err != nil {
-		t.Fatalf("转换失败: %v", err)
+		t.Fatalf("拆分失败: %v", err)
 	}
-	for _, want := range []string{PlaceholderImage, PlaceholderFile, PlaceholderFace, "暂不支持的消息段: node"} {
-		if !strings.Contains(out.Text, want) {
-			t.Errorf("正文 %q 中缺少 %q", out.Text, want)
+	if len(parts) != 1 {
+		t.Fatalf("段数为 %d", len(parts))
+	}
+	for _, want := range []string{PlaceholderFace, "暂不支持的消息段: node"} {
+		if !strings.Contains(parts[0].Text, want) {
+			t.Errorf("正文 %q 中缺少 %q", parts[0].Text, want)
 		}
 	}
 }
 
-func TestFromOneBotErrors(t *testing.T) {
+func TestSplitFileVideoRecord(t *testing.T) {
+	parts, err := Split([]obmodel.InSegment{
+		{Type: "file", Data: json.RawMessage(`{"file":"https://example.com/a.pdf","name":"a.pdf"}`)},
+		{Type: "video", Data: json.RawMessage(`{"file":"base64://dmlkZW8="}`)},
+		{Type: "record", Data: json.RawMessage(`{"file":"https://example.com/a.amr"}`)},
+	})
+	if err != nil {
+		t.Fatalf("拆分失败: %v", err)
+	}
+	if len(parts) != 3 {
+		t.Fatalf("段数为 %d，期望 3", len(parts))
+	}
+
+	want := []struct {
+		kind   string
+		source string
+		name   string
+	}{
+		{kind: "file", source: "https://example.com/a.pdf", name: "a.pdf"},
+		{kind: "video", source: "base64://dmlkZW8="},
+		{kind: "record", source: "https://example.com/a.amr"},
+	}
+
+	for index, item := range want {
+		media := parts[index].Media
+		if media == nil {
+			t.Fatalf("第 %d 段不是媒体: %+v", index, parts[index])
+		}
+		if media.Kind != item.kind || media.Source != item.source || media.Name != item.name {
+			t.Errorf("第 %d 段为 %+v", index, *media)
+		}
+	}
+}
+
+func TestSplitErrors(t *testing.T) {
 	tests := []struct {
 		name     string
 		segments []obmodel.InSegment
 	}{
-		{
-			name:     "空消息",
-			segments: nil,
-		},
-		{
-			name:     "文本段损坏",
-			segments: []obmodel.InSegment{{Type: "text", Data: json.RawMessage(`{"text":`)}},
-		},
-		{
-			name:     "@ 段缺少标识",
-			segments: []obmodel.InSegment{{Type: "at", Data: json.RawMessage(`{}`)}},
-		},
+		{name: "空消息", segments: nil},
+		{name: "文本段损坏", segments: []obmodel.InSegment{{Type: "text", Data: json.RawMessage(`{"text":`)}}},
+		{name: "@ 段缺少标识", segments: []obmodel.InSegment{{Type: "at", Data: json.RawMessage(`{}`)}}},
+		{name: "图片段缺少 file", segments: []obmodel.InSegment{{Type: "image", Data: json.RawMessage(`{"name":"a.png"}`)}}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := FromOneBot(tt.segments); err == nil {
+			if _, err := Split(tt.segments); err == nil {
 				t.Fatal("期望返回错误")
 			}
 		})

@@ -8,12 +8,14 @@ package event
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/identity"
+	"github.com/Takeoff0518/HelloYunhu/internal/bridge/media"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/message"
 	"github.com/Takeoff0518/HelloYunhu/internal/logging"
 	obmodel "github.com/Takeoff0518/HelloYunhu/internal/onebot/model"
@@ -28,6 +30,8 @@ type Converter struct {
 	BotID string
 	// Messages 是消息标识映射。
 	Messages identity.MessageStore
+	// Media 下载媒体内容，为空时图片退化为直接给出地址。
+	Media *media.Loader
 	// Logger 为空时丢弃日志。
 	Logger *slog.Logger
 }
@@ -86,7 +90,7 @@ func (c *Converter) messageEvent(ctx context.Context, envelope model.Envelope) (
 		return nil, false, fmt.Errorf("分配消息标识: %w", err)
 	}
 
-	segments, rawMessage := c.segments(&payload.Message)
+	segments, rawMessage := c.segments(ctx, &payload.Message)
 
 	event := &obmodel.MessageEvent{
 		PostType:   obmodel.PostTypeMessage,
@@ -136,17 +140,71 @@ func (c *Converter) messageEvent(ctx context.Context, envelope model.Envelope) (
 }
 
 // segments 把消息内容转换为消息段与原始文本。
-func (c *Converter) segments(payload *model.Message) (obmodel.OutMessage, string) {
-	if payload.ContentType == model.ContentTypeText {
+func (c *Converter) segments(ctx context.Context, payload *model.Message) (obmodel.OutMessage, string) {
+	switch payload.ContentType {
+	case model.ContentTypeText:
 		content, err := payload.TextContent()
 		if err != nil {
 			c.logger().Warn("解析文本内容失败，已降级为占位文本", "msg_id", payload.MsgID, "err", err)
 			return message.IncomingPlaceholder(payload.ContentType), ""
 		}
 		return message.IncomingText(content), content.Text
+
+	case model.ContentTypeImage:
+		return c.imageSegments(ctx, payload)
+
+	case model.ContentTypeFile:
+		content, err := payload.FileContent()
+		if err != nil {
+			c.logger().Warn("解析文件内容失败，已降级为占位文本", "msg_id", payload.MsgID, "err", err)
+			return message.IncomingPlaceholder(payload.ContentType), ""
+		}
+		return obmodel.OutMessage{message.IncomingFile(content.FileURL, content.FileURL, content.FileName)}, message.PlaceholderFile
+
+	case model.ContentTypeVideo:
+		content, err := payload.VideoContent()
+		if err != nil {
+			c.logger().Warn("解析视频内容失败，已降级为占位文本", "msg_id", payload.MsgID, "err", err)
+			return message.IncomingPlaceholder(payload.ContentType), ""
+		}
+		return obmodel.OutMessage{message.IncomingVideo(content.VideoURL, content.VideoURL)}, message.PlaceholderVideo
+
+	case model.ContentTypeAudio:
+		content, err := payload.AudioContent()
+		if err != nil {
+			c.logger().Warn("解析语音内容失败，已降级为占位文本", "msg_id", payload.MsgID, "err", err)
+			return message.IncomingPlaceholder(payload.ContentType), ""
+		}
+		return obmodel.OutMessage{message.IncomingAudio(content.AudioURL, content.AudioURL)}, message.PlaceholderAudio
+
+	default:
+		return message.IncomingPlaceholder(payload.ContentType), ""
+	}
+}
+
+// imageSegments 把图片内容转换为消息段。
+//
+// 云湖的图片是网络地址，而框架访问云湖 CDN 时可能受到来源限制，因此这里先下载
+// 再以 base64 交给框架；下载失败时退化为直接给出地址，至少不会丢消息。
+func (c *Converter) imageSegments(ctx context.Context, payload *model.Message) (obmodel.OutMessage, string) {
+	content, err := payload.ImageContent()
+	if err != nil {
+		c.logger().Warn("解析图片内容失败，已降级为占位文本", "msg_id", payload.MsgID, "err", err)
+		return message.IncomingPlaceholder(payload.ContentType), ""
 	}
 
-	return message.IncomingPlaceholder(payload.ContentType), ""
+	if c.Media != nil {
+		name, data, err := c.Media.Load(ctx, content.ImageURL)
+		if err == nil {
+			file := "base64://" + base64.StdEncoding.EncodeToString(data)
+			return obmodel.OutMessage{message.IncomingImage(file, content.ImageURL, name)}, message.PlaceholderImage
+		}
+		c.logger().Warn("下载图片失败，已退化为直接给出地址", "msg_id", payload.MsgID, "err", err)
+	}
+
+	name := content.ImageName
+	segment := message.IncomingImage(content.ImageURL, content.ImageURL, name)
+	return obmodel.OutMessage{segment}, message.PlaceholderImage
 }
 
 // logger 返回可用的日志实例。

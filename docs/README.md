@@ -5,8 +5,8 @@
 - [开发计划](design/roadmap.md)：项目目标、范围、设计取舍、仓库结构、里程碑与工程规范。
 - [项目状态](design/status.md)：当前进度、下一步任务与未决问题，每次工作结束时更新。
 - [架构说明](design/architecture.md)：模块划分、数据流、并发模型与错误处理，随实现同步更新。
-- 协议映射说明（`design/protocol-mapping.md`）：事件、接口、消息段与标识的完整映射表，随实现同步编写。
-- 标识映射说明（`design/id-mapping.md`）：映射算法、表结构与恢复方式，M2 阶段编写。
+- [协议映射说明](design/protocol-mapping.md)：事件、接口、消息段与标识的映射，以及尚未确认的行为。
+- 标识映射说明（`design/id-mapping.md`）：映射算法、表结构与恢复方式，随后续里程碑补充。
 
 ## 协作约定
 

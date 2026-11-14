@@ -25,8 +25,8 @@ type MessageStore interface {
 
 // Memory 是内存实现。
 //
-// 进程退出后映射全部丢失，重启后旧消息的引用与撤回会失效。M2 会换成落盘实现，
-// 这里的接口保持不变。
+// 进程退出后映射全部丢失，重启后旧消息的引用与撤回会失效。正式运行使用
+// internal/storage 中的持久化实现，这里只用于测试与不需要落盘的场景。
 type Memory struct {
 	mu      sync.Mutex
 	next    int64

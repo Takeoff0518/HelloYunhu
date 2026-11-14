@@ -13,9 +13,11 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/Takeoff0518/HelloYunhu/internal/config"
 	"github.com/Takeoff0518/HelloYunhu/internal/logging"
+	"github.com/Takeoff0518/HelloYunhu/internal/storage"
 )
 
 // Options 描述一次启动所需的输入。
@@ -54,6 +56,18 @@ func Run(ctx context.Context, opt Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	store, err := storage.Open(ctx, cfg.Storage.Path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			logger.Warn("关闭数据库失败", "err", err)
+		}
+	}()
+
+	go pruneLoop(ctx, store, cfg.Storage.MessageTTL.Standard(), logger)
+
 	var (
 		wg      sync.WaitGroup
 		errOnce sync.Once
@@ -65,7 +79,7 @@ func Run(ctx context.Context, opt Options) error {
 		go func(instanceCfg config.Instance) {
 			defer wg.Done()
 
-			if err := runInstance(ctx, instanceCfg, cfg, logger); err != nil {
+			if err := runInstance(ctx, instanceCfg, cfg, logger, store); err != nil {
 				errOnce.Do(func() {
 					runErr = fmt.Errorf("实例 %s: %w", instanceCfg.Name, err)
 				})
@@ -83,6 +97,42 @@ func Run(ctx context.Context, opt Options) error {
 
 	logger.Info("进程结束")
 	return nil
+}
+
+// pruneLoop 定期清理过期的消息标识映射。
+//
+// 映射表的增长速度远快于用户与群，不清理会无限膨胀。启动时立即清理一次，之后
+// 按小时执行；保留时长比一小时更短时按保留时长执行。
+func pruneLoop(ctx context.Context, store *storage.Store, ttl time.Duration, logger *slog.Logger) {
+	interval := time.Hour
+	if ttl > 0 && ttl < interval {
+		interval = ttl
+	}
+
+	prune := func() {
+		removed, err := store.Prune(ctx, ttl)
+		if err != nil {
+			logger.Warn("清理过期的消息标识失败", "err", err)
+			return
+		}
+		if removed > 0 {
+			logger.Info("清理过期的消息标识", "removed", removed)
+		}
+	}
+
+	prune()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			prune()
+		}
+	}
 }
 
 // newLogger 按配置创建日志实例。

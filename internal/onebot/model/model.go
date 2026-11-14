@@ -114,6 +114,28 @@ type (
 	ReplyData struct {
 		ID int64 `json:"id"`
 	}
+	// ImageData 是图片段。File 可以是 base64://、网络地址或本地路径。
+	ImageData struct {
+		File string `json:"file"`
+		URL  string `json:"url,omitempty"`
+		Name string `json:"name,omitempty"`
+	}
+	// FileData 是文件段。
+	FileData struct {
+		File string `json:"file"`
+		URL  string `json:"url,omitempty"`
+		Name string `json:"name,omitempty"`
+	}
+	// VideoData 是视频段。
+	VideoData struct {
+		File string `json:"file"`
+		URL  string `json:"url,omitempty"`
+	}
+	// RecordData 是语音段。云湖没有语音发送能力，接收方向转成文件。
+	RecordData struct {
+		File string `json:"file"`
+		URL  string `json:"url,omitempty"`
+	}
 )
 
 // Text 构造文本段。

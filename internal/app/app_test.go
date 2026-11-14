@@ -75,6 +75,8 @@ func TestRunInstanceFailure(t *testing.T) {
 	defer server.Close()
 
 	config := `
+storage:
+  path: ` + filepath.ToSlash(filepath.Join(t.TempDir(), "test.db")) + `
 yunhu:
   api_base: ` + server.URL + `/open-apis/v1
   subscribe_url: ws://127.0.0.1:1/subscribe
@@ -209,6 +211,8 @@ func TestRunEndToEnd(t *testing.T) {
 log:
   level: debug
   format: text
+storage:
+  path: ` + filepath.ToSlash(filepath.Join(t.TempDir(), "test.db")) + `
 yunhu:
   api_base: ` + yunhuServer.URL + `/open-apis/v1
   subscribe_url: ` + wsURL(t, yunhuServer, "/subscribe") + `
