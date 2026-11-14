@@ -1,0 +1,35 @@
+# HelloYunhu 配置示例。复制到仓库根目录并改名为 config.yaml 后按需修改。
+# 运行配置包含机器人令牌，已在 .gitignore 中排除。
+#
+# 全部配置项的说明在 M4 补齐的 docs/guides/configuration.md 中。
+
+# 日志设置。
+log:
+  # 级别：debug、info、warn、error。
+  level: info
+  # 格式：text 面向终端阅读，json 便于日志采集。
+  format: text
+
+# 持久化设置。标识映射与去重记录保存在这里。
+storage:
+  # SQLite 文件路径，所在目录不存在时自动创建。
+  path: data/helloyunhu.db
+  # 消息标识映射的保留时长。
+  message_ttl: 168h
+
+# 云湖平台的服务地址，一般不需要修改。
+yunhu:
+  api_base: https://chat-go.jwzhd.com/open-apis/v1
+  subscribe_url: wss://ws.jwzhd.com/subscribe
+
+# 机器人实例。一个进程可以同时运行多个实例，实例之间互不影响。
+instances:
+  - # 实例名称，只用于日志与诊断，必须唯一。
+    name: main
+    # 云湖机器人的令牌，从机器人后台获取。下面是占位文本，请替换为真实令牌。
+    token: "请替换为真实的机器人令牌"
+    onebot:
+      # 机器人框架监听的地址，使用反向 WebSocket。
+      url: ws://127.0.0.1:6199/ws
+      # 框架侧配置的访问令牌，没有设置就留空。
+      access_token: ""
