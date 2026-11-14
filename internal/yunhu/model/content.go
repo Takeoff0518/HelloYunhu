@@ -67,3 +67,41 @@ func (m *Message) FileContent() (*FileContent, error) {
 	}
 	return &content, nil
 }
+
+// VideoContent 是 contentType 为 video 时的消息内容。
+type VideoContent struct {
+	VideoURL      string `json:"videoUrl"`
+	VideoDuration int    `json:"videoDuration"`
+}
+
+// VideoContent 解析视频内容。
+func (m *Message) VideoContent() (*VideoContent, error) {
+	if m.ContentType != ContentTypeVideo {
+		return nil, ErrUnsupportedContent
+	}
+
+	var content VideoContent
+	if err := json.Unmarshal(m.Content, &content); err != nil {
+		return nil, err
+	}
+	return &content, nil
+}
+
+// AudioContent 是 contentType 为 audio 时的消息内容。
+type AudioContent struct {
+	AudioURL      string `json:"audioUrl"`
+	AudioDuration int    `json:"audioDuration"`
+}
+
+// AudioContent 解析语音内容。
+func (m *Message) AudioContent() (*AudioContent, error) {
+	if m.ContentType != ContentTypeAudio {
+		return nil, ErrUnsupportedContent
+	}
+
+	var content AudioContent
+	if err := json.Unmarshal(m.Content, &content); err != nil {
+		return nil, err
+	}
+	return &content, nil
+}
