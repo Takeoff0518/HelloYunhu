@@ -5,13 +5,19 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"runtime"
 	"runtime/debug"
+	"syscall"
+
+	"github.com/Takeoff0518/HelloYunhu/internal/app"
+	"github.com/Takeoff0518/HelloYunhu/internal/config"
 )
 
 // 版本信息在构建时通过链接参数写入，未注入时保留下面的默认值。
@@ -69,7 +75,7 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
-// runServe 启动转换进程。
+// runServe 加载配置并启动转换进程，收到中断信号后退出。
 func runServe(args []string, _, stderr io.Writer) int {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -84,8 +90,22 @@ func runServe(args []string, _, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	fmt.Fprintf(stderr, "错误: 配置读取尚未实现，%s 没有被加载\n", *configPath)
-	return exitError
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	info := resolveBuildInfo()
+	err := app.Run(ctx, app.Options{
+		ConfigPath: *configPath,
+		Version:    info.Version,
+		Commit:     info.Commit,
+		LogOutput:  stderr,
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "错误: %v\n", err)
+		return exitError
+	}
+
+	return exitOK
 }
 
 // runVersion 输出版本信息。
@@ -111,7 +131,10 @@ func runVersion(args []string, stdout, stderr io.Writer) int {
 }
 
 // runSelftest 检查运行环境与配置。
-func runSelftest(args []string, _, stderr io.Writer) int {
+//
+// 目前只验证配置能否加载与校验。与云湖和框架的连通性检查依赖 M1 的连接实现，
+// 在那之前明确列为跳过项，不计入通过。
+func runSelftest(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("selftest", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", defaultConfigPath, "配置文件路径")
@@ -125,8 +148,27 @@ func runSelftest(args []string, _, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	fmt.Fprintf(stderr, "错误: 配置检查尚未实现，%s 没有被读取\n", *configPath)
-	return exitError
+	info := resolveBuildInfo()
+	fmt.Fprintf(stdout, "helloyunhu %s（提交 %s）\n", info.Version, info.Commit)
+	fmt.Fprintf(stdout, "Go: %s %s/%s\n", runtime.Version(), runtime.GOOS, runtime.GOARCH)
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		fmt.Fprintf(stdout, "[失败] 配置检查: %v\n", err)
+		fmt.Fprintln(stdout, "自检未通过")
+		return exitError
+	}
+
+	fmt.Fprintf(stdout, "[通过] 配置检查: %s，共 %d 个实例\n", *configPath, len(cfg.Instances))
+	for _, instance := range cfg.Instances {
+		fmt.Fprintf(stdout, "       实例 %s 连接 %s\n", instance.Name, instance.OneBot.URL)
+	}
+
+	fmt.Fprintln(stdout, "[跳过] 云湖接口连通性：等待 M1 实现")
+	fmt.Fprintln(stdout, "[跳过] 事件订阅连接：等待 M1 实现")
+	fmt.Fprintln(stdout, "[跳过] 框架握手：等待 M1 实现")
+	fmt.Fprintln(stdout, "自检结束，跳过的项目没有得到验证")
+	return exitOK
 }
 
 // parseFlags 解析子命令参数。参数解析失败时返回退出码，并把 ok 置为 false。
