@@ -236,6 +236,26 @@ instances:
 	}
 }
 
+func TestParseRawEvents(t *testing.T) {
+	raw := "log:\n  raw_events: true\n" + minimalYAML
+
+	cfg, err := Parse([]byte(raw))
+	if err != nil {
+		t.Fatalf("Parse 返回错误: %v", err)
+	}
+	if !cfg.Log.RawEvents {
+		t.Error("raw_events 应为 true")
+	}
+
+	defaults, err := Parse([]byte(minimalYAML))
+	if err != nil {
+		t.Fatalf("Parse 返回错误: %v", err)
+	}
+	if defaults.Log.RawEvents {
+		t.Error("raw_events 默认应为 false")
+	}
+}
+
 func TestLoad(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")

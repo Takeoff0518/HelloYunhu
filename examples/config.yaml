@@ -5,10 +5,13 @@
 
 # 日志设置。
 log:
-  # 级别：debug、info、warn、error。
+  # 级别：debug、info、warn、error。排查问题时设为 debug。
   level: info
   # 格式：text 面向终端阅读，json 便于日志采集。
   format: text
+  # 为真时在 debug 级别输出收到的原始事件，只用于排查协议问题。
+  # 原始事件包含消息正文与昵称，正常运行时应保持 false。
+  raw_events: false
 
 # 持久化设置。标识映射与去重记录保存在这里。
 storage:
