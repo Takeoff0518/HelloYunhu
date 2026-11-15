@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/Takeoff0518/HelloYunhu/internal/config"
 )
 
 var testUpgrader = websocket.Upgrader{}
@@ -34,6 +36,33 @@ func writeConfig(t *testing.T, content string) string {
 func wsURL(t *testing.T, server *httptest.Server, path string) string {
 	t.Helper()
 	return "ws" + strings.TrimPrefix(server.URL, "http") + path
+}
+
+func TestOpenLogOutputWritesBoth(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "logs", "helloyunhu.log")
+
+	var terminal bytes.Buffer
+	output, closeOutput, err := openLogOutput(config.Log{File: path}, &terminal)
+	if err != nil {
+		t.Fatalf("打开日志输出失败: %v", err)
+	}
+
+	if _, err := output.Write([]byte("测试日志\n")); err != nil {
+		t.Fatalf("写入日志失败: %v", err)
+	}
+	closeOutput()
+
+	if !strings.Contains(terminal.String(), "测试日志") {
+		t.Errorf("终端输出为 %q", terminal.String())
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("读取日志文件失败: %v", err)
+	}
+	if !strings.Contains(string(content), "测试日志") {
+		t.Errorf("日志文件内容为 %q", string(content))
+	}
 }
 
 func TestRunMissingConfig(t *testing.T) {
