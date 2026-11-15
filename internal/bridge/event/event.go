@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/identity"
@@ -90,7 +91,11 @@ func (c *Converter) messageEvent(ctx context.Context, envelope model.Envelope) (
 		return nil, false, fmt.Errorf("分配消息标识: %w", err)
 	}
 
-	segments, rawMessage := c.segments(ctx, &payload.Message)
+	// 指令消息的正文只有参数，指令名单独放在 message 里。OneBot 没有原生命令，
+	// 框架按消息正文匹配命令，因此把指令名拼回正文，形如「/quote test」。
+	command := instructionCommand(envelope.Header.EventType, &payload.Message)
+
+	segments, rawMessage := c.segments(ctx, &payload.Message, command)
 
 	event := &obmodel.MessageEvent{
 		PostType:   obmodel.PostTypeMessage,
@@ -108,10 +113,11 @@ func (c *Converter) messageEvent(ctx context.Context, envelope model.Envelope) (
 			Role:     role(payload.Sender.SenderUserLevel),
 		},
 		Yunhu: &obmodel.YunhuExtension{
-			MsgID:    payload.Message.MsgID,
-			ChatID:   payload.Chat.ChatID,
-			ChatType: payload.Chat.ChatType,
-			EventID:  envelope.Header.EventID,
+			MsgID:       payload.Message.MsgID,
+			ChatID:      payload.Chat.ChatID,
+			ChatType:    payload.Chat.ChatType,
+			EventID:     envelope.Header.EventID,
+			Instruction: command,
 		},
 	}
 
@@ -140,13 +146,18 @@ func (c *Converter) messageEvent(ctx context.Context, envelope model.Envelope) (
 }
 
 // segments 把消息内容转换为消息段与原始文本。
-func (c *Converter) segments(ctx context.Context, payload *model.Message) (obmodel.OutMessage, string) {
+//
+// command 非空时拼在文本正文之前，与 OneBot 框架按正文匹配命令的习惯一致。
+func (c *Converter) segments(ctx context.Context, payload *model.Message, command string) (obmodel.OutMessage, string) {
 	switch payload.ContentType {
 	case model.ContentTypeText:
 		content, err := payload.TextContent()
 		if err != nil {
 			c.logger().Warn("解析文本内容失败，已降级为占位文本", "msg_id", payload.MsgID, "err", err)
 			return message.IncomingPlaceholder(payload.ContentType), ""
+		}
+		if command != "" {
+			content.Text = joinCommand(command, content.Text)
 		}
 		return message.IncomingText(content), content.Text
 
@@ -205,6 +216,32 @@ func (c *Converter) imageSegments(ctx context.Context, payload *model.Message) (
 	name := content.ImageName
 	segment := message.IncomingImage(content.ImageURL, content.ImageURL, name)
 	return obmodel.OutMessage{segment}, message.PlaceholderImage
+}
+
+// instructionCommand 返回指令消息的指令名，其它事件返回空。
+//
+// 云湖的指令消息把指令名放在 instructionName 或 commandName，正文只含参数。
+func instructionCommand(eventType string, payload *model.Message) string {
+	if eventType != model.EventTypeMessageInstruction {
+		return ""
+	}
+
+	for _, candidate := range []string{payload.InstructionName, payload.CommandName} {
+		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
+			return trimmed
+		}
+	}
+
+	return ""
+}
+
+// joinCommand 把指令名与正文拼成一条完整消息，正文为空时只返回指令名。
+func joinCommand(command, text string) string {
+	text = strings.TrimLeft(text, " ")
+	if text == "" {
+		return command
+	}
+	return command + " " + text
 }
 
 // role 把云湖的成员角色转换为 OneBot 的角色取值。
