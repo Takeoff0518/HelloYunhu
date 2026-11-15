@@ -52,6 +52,54 @@ func TestParseAppliesDefaults(t *testing.T) {
 	if cfg.Capabilities.CanSendRecord {
 		t.Error("can_send_record 默认应为假，平台只能按文件发送语音")
 	}
+	if cfg.Log.KeepDays != 30 {
+		t.Errorf("日志保留天数默认值为 %d，期望 30", cfg.Log.KeepDays)
+	}
+	if !cfg.Log.Compress {
+		t.Error("日志压缩默认应为真")
+	}
+}
+
+// TestLogRotationOverrides 校验日志保留天数与压缩开关可以覆盖。
+func TestLogRotationOverrides(t *testing.T) {
+	const raw = minimalYAML + `
+log:
+  keep_days: 7
+  compress: false
+`
+	cfg, err := Parse([]byte(raw))
+	if err != nil {
+		t.Fatalf("Parse 返回错误: %v", err)
+	}
+	if cfg.Log.KeepDays != 7 {
+		t.Errorf("保留天数为 %d，期望 7", cfg.Log.KeepDays)
+	}
+	if cfg.Log.Compress {
+		t.Error("compress 应被覆盖为假")
+	}
+}
+
+// TestLogKeepDaysInfinite 校验 -1 表示永不删除。
+func TestLogKeepDaysInfinite(t *testing.T) {
+	cfg, err := Parse([]byte(minimalYAML + "log:\n  keep_days: -1\n"))
+	if err != nil {
+		t.Fatalf("Parse 返回错误: %v", err)
+	}
+	if cfg.Log.KeepDays != -1 {
+		t.Errorf("保留天数为 %d，期望 -1", cfg.Log.KeepDays)
+	}
+}
+
+// TestLogKeepDaysInvalid 校验 0 与小于 -1 的取值被拒绝。
+func TestLogKeepDaysInvalid(t *testing.T) {
+	for _, value := range []string{"0", "-2"} {
+		raw := minimalYAML + "log:\n  keep_days: " + value + "\n"
+		if _, err := Parse([]byte(raw)); err == nil {
+			t.Errorf("keep_days 为 %s 时应报错", value)
+		} else if !strings.Contains(err.Error(), "log.keep_days") {
+			t.Errorf("错误信息应指出 log.keep_days，实际为: %v", err)
+		}
+	}
 }
 
 func TestCapabilityOverrides(t *testing.T) {

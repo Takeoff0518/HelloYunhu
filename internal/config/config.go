@@ -25,6 +25,7 @@ import (
 const (
 	defaultLogLevel     = "info"
 	defaultLogFormat    = "text"
+	defaultLogKeepDays  = 30
 	defaultStoragePath  = "data/helloyunhu.db"
 	defaultMessageTTL   = 168 * time.Hour
 	defaultAPIBase      = "https://chat-go.jwzhd.com/open-apis/v1"
@@ -59,10 +60,10 @@ type Log struct {
 	//
 	// 只用于排查协议问题：原始事件包含消息正文与昵称，不属于常规日志内容。
 	RawEvents bool `yaml:"raw_events"`
-	// File 是日志文件路径，为空时只输出到终端。
-	//
-	// 设置后同时写入终端与文件，文件以追加方式打开，不做自动轮转。
-	File string `yaml:"file"`
+	// KeepDays 是日志保留天数，-1 表示永不删除，默认为 30。
+	KeepDays int `yaml:"keep_days"`
+	// Compress 为真时把前一天的日志压缩成 gzip，默认为真。
+	Compress bool `yaml:"compress"`
 }
 
 // Storage 是持久化设置。
@@ -181,8 +182,10 @@ func (d Duration) Standard() time.Duration {
 func Default() *Config {
 	return &Config{
 		Log: Log{
-			Level:  defaultLogLevel,
-			Format: defaultLogFormat,
+			Level:    defaultLogLevel,
+			Format:   defaultLogFormat,
+			KeepDays: defaultLogKeepDays,
+			Compress: true,
 		},
 		Storage: Storage{
 			Path:       defaultStoragePath,
@@ -248,6 +251,9 @@ func (c *Config) Validate() error {
 	}
 	if _, err := logging.ParseFormat(c.Log.Format); err != nil {
 		problems = append(problems, fmt.Errorf("log.format: %w", err))
+	}
+	if c.Log.KeepDays == 0 || c.Log.KeepDays < -1 {
+		problems = append(problems, errors.New("log.keep_days: 必须是 -1 或大于 0，-1 表示永不删除"))
 	}
 
 	if strings.TrimSpace(c.Storage.Path) == "" {
