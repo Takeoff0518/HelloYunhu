@@ -36,8 +36,6 @@ type Converter struct {
 	Media *media.Loader
 	// Nicknames 记录见过的昵称，发送 @ 时用来还原正文里要写的名字。
 	Nicknames *cache.Nicknames
-	// Origins 记录消息属于哪个会话，撤回时使用。
-	Origins *cache.Origins
 	// Logger 为空时丢弃日志。
 	Logger *slog.Logger
 }
@@ -97,8 +95,10 @@ func (c *Converter) messageEvent(ctx context.Context, envelope model.Envelope) (
 	if err != nil {
 		return nil, false, fmt.Errorf("分配消息标识: %w", err)
 	}
-	// 记下会话归属，框架之后要求撤回这条消息时需要。
-	c.Origins.Put(messageID, payload.Chat.ChatID, payload.Chat.ChatType)
+	// 会话归属与标识一起落库，框架之后要求撤回这条消息时需要。
+	if err := c.Messages.SaveOrigin(ctx, messageID, payload.Chat.ChatID, payload.Chat.ChatType); err != nil {
+		c.logger().Warn("记录消息归属失败，重启后可能无法撤回", "message_id", messageID, "err", err)
+	}
 
 	// 指令消息的正文只有参数，指令名单独放在 message 里。OneBot 没有原生命令，
 	// 框架按消息正文匹配命令，因此把指令名拼回正文，形如「/quote test」。

@@ -129,7 +129,7 @@ M2 范围之外的内容按开发计划留给 M3：撤回、禁言、踢人、�
 ### M3 群管理（进行中）
 
 - `internal/yunhu/api/actions.go`：撤回（`/bot/recall`）、禁言（`/group/gag-member`）、移除成员（`/group/remove-member`）。撤回的 `chatType` 取 `user` 或 `group`，事件的私聊类型是 `bot`，调用前统一换算。
-- `internal/bridge/cache/origins.go`：消息归属缓存，记住收发的消息属于哪个会话，撤回时补上会话标识与类型。只存在内存里，重启后撤回旧消息返回 1404。
+- `internal/storage`：标识映射表新增 `chat_id` 与 `chat_type` 两列，收发的消息都把会话信息与标识一起落库，重启后仍可撤回；旧库在启动阶段按列名检查后用 `ALTER TABLE` 补齐。
 - `internal/onebot/action/manage.go`：`delete_msg`、`set_group_ban`、`set_group_kick` 三个接口。`set_group_kick` 的 `reject_add_request` 在云湖没有对应参数，记日志后忽略。
 - 测试：假服务校验三个接口的路径与请求体，覆盖私聊会话类型换算、未知消息返回 1404、缺参数返回 100。
 - `internal/yunhu/api/limiter.go`：按 `yunhu.rate_limit` 匀速放行调用，默认每秒十次，等待受上下文控制；云湖返回 1007 时可用 `errors.Is(err, api.ErrRateLimited)` 判断。
@@ -242,7 +242,7 @@ M2 的关键验收项：
 | 视频接收 | 已验证：`videoUrl` 拼 `chat-video1` 后下载，10.6 MB 的视频转 base64 成功 |
 | 语音接收 | 已验证：`audioUrl` 拼 `chat-audio1` 后下载，转 base64 成功 |
 | 引用回复 | 已验证，`get_msg` 回放与 `parentId` 均生效 |
-| 重启后引用与撤回仍然有效 | 引用已验证：重启后按落盘映射反查出 `parentId`。撤回已实现，但会话归属只在内存里，重启后撤回旧消息返回 1404 |
+| 重启后引用与撤回仍然有效 | 引用已验证：重启后按落盘映射反查出 `parentId`。撤回的会话信息也已落库，重启后仍可撤回，单元测试覆盖旧库升级与重启读取 |
 | 转换逻辑有单元测试 | 已覆盖，速率与发布前保持 |
 
 ## 本地验证记录
