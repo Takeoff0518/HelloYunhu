@@ -270,6 +270,8 @@ func (c *Client) handleFrame(ctx context.Context, payload []byte) {
 
 // dispatch 执行一次接口调用并写回响应。
 func (c *Client) dispatch(ctx context.Context, request model.Request) {
+	c.logger.Debug("收到接口调用", "action", request.Action)
+
 	data, err := c.handler(ctx, request.Action, request.Params)
 	if err != nil {
 		var actionErr *model.ActionError

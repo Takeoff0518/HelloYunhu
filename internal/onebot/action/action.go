@@ -182,6 +182,15 @@ func (d *Dispatcher) send(ctx context.Context, recvType, recvID string, segments
 			request.ParentID = parentID
 		}
 
+		// 只记录结构与标识，不输出消息正文。
+		d.logger().Debug("发送消息",
+			"recv_type", request.RecvType,
+			"recv_id", request.RecvID,
+			"content_type", request.ContentType,
+			"parent_id", request.ParentID,
+			"part_index", index,
+		)
+
 		result, err := d.API.SendMessage(ctx, request)
 		if err != nil {
 			return nil, fmt.Errorf("发送消息: %w", err)
