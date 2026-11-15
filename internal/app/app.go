@@ -17,7 +17,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Takeoff0518/HelloYunhu/internal/app/metrics"
 	"github.com/Takeoff0518/HelloYunhu/internal/config"
+	"github.com/Takeoff0518/HelloYunhu/internal/diagnostics"
 	"github.com/Takeoff0518/HelloYunhu/internal/logging"
 	"github.com/Takeoff0518/HelloYunhu/internal/storage"
 )
@@ -76,18 +78,37 @@ func Run(ctx context.Context, opt Options) error {
 
 	go pruneLoop(ctx, store, cfg.Storage.MessageTTL.Standard(), logger)
 
+	// 运行计数供只读诊断接口使用，所有实例共用。
+	counters := metrics.New()
+	startedAt := time.Now()
+
 	var (
 		wg      sync.WaitGroup
 		errOnce sync.Once
 		runErr  error
 	)
 
+	if cfg.Diagnostics.Enabled {
+		server := diagnostics.New(diagnostics.Options{
+			Listen:   cfg.Diagnostics.Listen,
+			Logger:   logger,
+			Snapshot: snapshotFunc(opt.Version, startedAt, len(cfg.Instances), counters),
+		})
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := server.Run(ctx); err != nil {
+				logger.Warn("诊断服务退出", "err", err)
+			}
+		}()
+	}
+
 	for _, instanceCfg := range cfg.Instances {
 		wg.Add(1)
 		go func(instanceCfg config.Instance) {
 			defer wg.Done()
 
-			if err := runInstance(ctx, instanceCfg, cfg, logger, store); err != nil {
+			if err := runInstance(ctx, instanceCfg, cfg, logger, store, counters); err != nil {
 				errOnce.Do(func() {
 					runErr = fmt.Errorf("实例 %s: %w", instanceCfg.Name, err)
 				})
@@ -105,6 +126,20 @@ func Run(ctx context.Context, opt Options) error {
 
 	logger.Info("进程结束")
 	return nil
+}
+
+// snapshotFunc 构造诊断接口使用的状态查询。
+func snapshotFunc(version string, startedAt time.Time, instances int, counters *metrics.Metrics) func() diagnostics.Snapshot {
+	return func() diagnostics.Snapshot {
+		return diagnostics.Snapshot{
+			Version:        version,
+			StartedAt:      startedAt,
+			UptimeSeconds:  int64(time.Since(startedAt).Seconds()),
+			Instances:      instances,
+			EventsReceived: counters.EventsReceived(),
+			ActionsHandled: counters.ActionsHandled(),
+		}
+	}
 }
 
 // pruneLoop 定期清理过期的消息标识映射。

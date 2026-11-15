@@ -29,6 +29,8 @@ const (
 	defaultMessageTTL   = 168 * time.Hour
 	defaultAPIBase      = "https://chat-go.jwzhd.com/open-apis/v1"
 	defaultSubscribeURL = "wss://ws.jwzhd.com/subscribe"
+	defaultRateLimit    = 10
+	defaultDiagnoseAddr = "127.0.0.1:9090"
 )
 
 // Config 是进程的完整配置。
@@ -39,6 +41,8 @@ type Config struct {
 	Storage Storage `yaml:"storage"`
 	// Yunhu 是云湖平台的连接地址，所有实例共用。
 	Yunhu Yunhu `yaml:"yunhu"`
+	// Diagnostics 是只读诊断接口的设置。
+	Diagnostics Diagnostics `yaml:"diagnostics"`
 	// Instances 是机器人实例列表，至少需要一个。
 	Instances []Instance `yaml:"instances"`
 }
@@ -73,6 +77,20 @@ type Yunhu struct {
 	APIBase string `yaml:"api_base"`
 	// SubscribeURL 是事件订阅端点，令牌以查询参数的形式追加在后面。
 	SubscribeURL string `yaml:"subscribe_url"`
+	// RateLimit 是每个实例每秒最多发起的接口调用次数，0 表示不限制。
+	//
+	// 云湖的上限是每秒十次，默认留一点余量。发送消息不做重试，这里只做匀速。
+	RateLimit int `yaml:"rate_limit"`
+}
+
+// Diagnostics 是只读诊断接口的设置。
+//
+// 首个版本不提供管理界面，只暴露健康检查与运行状态两个只读端点。
+type Diagnostics struct {
+	// Enabled 为真时在 Listen 上启动诊断服务。
+	Enabled bool `yaml:"enabled"`
+	// Listen 是监听地址，例如 127.0.0.1:9090。
+	Listen string `yaml:"listen"`
 }
 
 // Instance 描述一个云湖机器人实例。
@@ -137,6 +155,10 @@ func Default() *Config {
 		Yunhu: Yunhu{
 			APIBase:      defaultAPIBase,
 			SubscribeURL: defaultSubscribeURL,
+			RateLimit:    defaultRateLimit,
+		},
+		Diagnostics: Diagnostics{
+			Listen: defaultDiagnoseAddr,
 		},
 	}
 }
@@ -194,6 +216,13 @@ func (c *Config) Validate() error {
 	}
 	if c.Storage.MessageTTL.Standard() <= 0 {
 		problems = append(problems, errors.New("storage.message_ttl: 必须大于 0"))
+	}
+
+	if c.Yunhu.RateLimit < 0 {
+		problems = append(problems, errors.New("yunhu.rate_limit: 不能为负数"))
+	}
+	if c.Diagnostics.Enabled && strings.TrimSpace(c.Diagnostics.Listen) == "" {
+		problems = append(problems, errors.New("diagnostics.listen: 启用诊断接口时不能为空"))
 	}
 
 	problems = append(problems, validateHTTPURL("yunhu.api_base", c.Yunhu.APIBase)...)
