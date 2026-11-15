@@ -37,6 +37,8 @@ type Config struct {
 	Token string
 	// HTTPClient 为空时使用带超时的默认客户端。
 	HTTPClient *http.Client
+	// RatePerSecond 是每秒最多发起的调用次数，0 表示不限流。
+	RatePerSecond int
 	// Logger 为空时丢弃日志。debug 级别会输出成功响应的原始数据。
 	Logger *slog.Logger
 }
@@ -46,6 +48,7 @@ type Client struct {
 	baseURL string
 	token   string
 	http    *http.Client
+	limiter *limiter
 	logger  *slog.Logger
 }
 
@@ -78,7 +81,13 @@ func New(cfg Config) (*Client, error) {
 		logger = logging.Discard()
 	}
 
-	return &Client{baseURL: baseURL, token: token, http: httpClient, logger: logger}, nil
+	return &Client{
+		baseURL: baseURL,
+		token:   token,
+		http:    httpClient,
+		limiter: newLimiter(cfg.RatePerSecond),
+		logger:  logger,
+	}, nil
 }
 
 // APIError 是云湖返回的业务错误。调用方可以通过错误码区分限流与其它失败。
@@ -113,6 +122,16 @@ const (
 	// CodeRateLimited 表示超过每个接口每秒 10 次的调用上限。
 	CodeRateLimited = 1007
 )
+
+// ErrRateLimited 表示云湖以 1007 拒绝了这次调用。
+//
+// 调用方可以用 errors.Is 判断，需要退避时自行决定等待多久；发送消息的路径不重试。
+var ErrRateLimited = errors.New("云湖接口频率超限")
+
+// Is 让 APIError 能匹配 ErrRateLimited。
+func (e *APIError) Is(target error) bool {
+	return target == ErrRateLimited && e.Code == CodeRateLimited
+}
 
 // BotInfo 查询机器人自身的信息。
 //
@@ -189,6 +208,10 @@ func (e *envelope) message() string {
 
 // do 发起一次请求并解析响应。
 func (c *Client) do(ctx context.Context, method, path, op string, query url.Values, body any) (json.RawMessage, error) {
+	if err := c.limiter.wait(ctx); err != nil {
+		return nil, fmt.Errorf("%s 等待限流放行: %w", op, err)
+	}
+
 	endpoint, err := c.endpoint(path, query)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
