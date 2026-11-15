@@ -70,6 +70,8 @@
 | `set_group_ban` | `POST /group/gag-member` | `部分` | 只接受 600、3600、21600、43200 秒，0 解禁，-1 永久 |
 | `set_group_kick` | `POST /group/remove-member` | `部分` | `reject_add_request` 没有对应参数，记日志后忽略 |
 | `.handle_quick_operation` | 直接返回成功 | `✓` | 框架处理快速操作后的回调 |
+| `can_send_image` | 配置项 `capabilities.can_send_image` | `✓` | 默认回答真，可在配置里改成假 |
+| `can_send_record` | 配置项 `capabilities.can_send_record` | `✓` | 默认回答假。改成真只影响框架的判断，语音仍按文件发送 |
 | `get_image` | 无 | `✗` | 收发两侧的图片段都已内联 base64，框架没有二次取图的场景 |
 | `set_group_card`、`set_group_name`、`set_group_admin`、`set_group_whole_ban` | 无 | `✗` | 平台没有开放这些能力 |
 | 群公告、精华消息、戳一戳 | 无 | `✗` | 平台没有开放这些能力 |

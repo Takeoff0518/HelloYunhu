@@ -42,6 +42,10 @@ type Dispatcher struct {
 	Recent *cache.Messages
 	// Nicknames 记录见过的昵称，发送 @ 时把正文里的标识换成昵称。
 	Nicknames *cache.Nicknames
+	// CanSendImage 是向框架声明的图片发送能力。
+	CanSendImage bool
+	// CanSendRecord 是向框架声明的语音发送能力。云湖只能按文件发送，默认声明为假。
+	CanSendRecord bool
 	// Logger 为空时丢弃日志。
 	Logger *slog.Logger
 }
@@ -69,6 +73,10 @@ func (d *Dispatcher) Handle(ctx context.Context, name string, params json.RawMes
 		return d.strangerInfo(ctx, params)
 	case "get_friend_list":
 		return d.friendList(), nil
+	case "can_send_image":
+		return map[string]any{"yes": d.CanSendImage}, nil
+	case "can_send_record":
+		return map[string]any{"yes": d.CanSendRecord}, nil
 	case "get_msg":
 		return d.getMessage(ctx, params)
 	case "get_status":
