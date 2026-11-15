@@ -27,21 +27,33 @@ type SendMessageRequest struct {
 }
 
 // SendMessageResult 是发送消息返回的数据。
-//
-// 平台实际使用的字段名尚未实测确认（调研报告第 11 节），因此同时容忍 msgId 与
-// messageId 两种写法，调用方应使用 ID 方法取值。
+// 平台实际使用的写法是 messageInfo.msgId，实测于 POST /bot/send；早期调研里猜测
+// 的顶层 msgId 与 messageId 也一并兼容，调用方应使用 ID 方法取值。
 type SendMessageResult struct {
 	MsgID     string `json:"msgId"`
 	MessageID string `json:"messageId"`
 	SendTime  int64  `json:"sendTime"`
+	// MessageInfo 是实测的返回结构，消息标识与接收方信息都在里面。
+	MessageInfo MessageInfo `json:"messageInfo"`
 }
 
-// ID 返回发送成功后的消息标识，两种字段名任意一种存在即可。
+// MessageInfo 是发送成功后的消息信息。
+type MessageInfo struct {
+	MsgID    string `json:"msgId"`
+	RecvID   string `json:"recvId"`
+	RecvType string `json:"recvType"`
+}
+
+// ID 返回发送成功后的消息标识，按实测结构优先取 messageInfo.msgId。
 func (r *SendMessageResult) ID() string {
-	if r.MsgID != "" {
+	switch {
+	case r.MessageInfo.MsgID != "":
+		return r.MessageInfo.MsgID
+	case r.MsgID != "":
 		return r.MsgID
+	default:
+		return r.MessageID
 	}
-	return r.MessageID
 }
 
 // UnmarshalJSON 让 data 为字符串时也能解析出消息标识。
