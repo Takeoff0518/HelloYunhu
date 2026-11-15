@@ -53,6 +53,10 @@ type Log struct {
 	//
 	// 只用于排查协议问题：原始事件包含消息正文与昵称，不属于常规日志内容。
 	RawEvents bool `yaml:"raw_events"`
+	// File 是日志文件路径，为空时只输出到终端。
+	//
+	// 设置后同时写入终端与文件，文件以追加方式打开，不做自动轮转。
+	File string `yaml:"file"`
 }
 
 // Storage 是持久化设置。

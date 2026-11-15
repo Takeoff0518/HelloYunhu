@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -41,7 +43,13 @@ func Run(ctx context.Context, opt Options) error {
 		return err
 	}
 
-	logger, err := newLogger(cfg.Log, opt.LogOutput)
+	output, closeOutput, err := openLogOutput(cfg.Log, opt.LogOutput)
+	if err != nil {
+		return err
+	}
+	defer closeOutput()
+
+	logger, err := newLogger(cfg.Log, output)
 	if err != nil {
 		return err
 	}
@@ -133,6 +141,39 @@ func pruneLoop(ctx context.Context, store *storage.Store, ttl time.Duration, log
 			prune()
 		}
 	}
+}
+
+// openLogOutput 按配置决定日志写到哪里。
+//
+// 未配置日志文件时只写终端；配置后同时写终端与文件，文件以追加方式打开，不做
+// 自动轮转，由使用者按需清理。返回的函数负责关闭文件。
+func openLogOutput(cfg config.Log, fallback io.Writer) (io.Writer, func(), error) {
+	terminal := fallback
+	if terminal == nil {
+		terminal = os.Stderr
+	}
+
+	if cfg.File == "" {
+		return terminal, func() {}, nil
+	}
+
+	path := filepath.Clean(cfg.File)
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, nil, fmt.Errorf("创建日志目录 %s: %w", dir, err)
+		}
+	}
+
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return nil, nil, fmt.Errorf("打开日志文件 %s: %w", path, err)
+	}
+
+	closeFile := func() {
+		_ = file.Close()
+	}
+
+	return io.MultiWriter(terminal, file), closeFile, nil
 }
 
 // newLogger 按配置创建日志实例。
