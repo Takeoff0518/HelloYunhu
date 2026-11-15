@@ -46,6 +46,47 @@ func TestParseAppliesDefaults(t *testing.T) {
 	if cfg.Instances[0].OneBot.AccessToken != "" {
 		t.Errorf("访问令牌默认值应为空，实际为 %q", cfg.Instances[0].OneBot.AccessToken)
 	}
+	if !cfg.Capabilities.CanSendImage {
+		t.Error("can_send_image 默认应为真")
+	}
+	if cfg.Capabilities.CanSendRecord {
+		t.Error("can_send_record 默认应为假，平台只能按文件发送语音")
+	}
+}
+
+func TestCapabilityOverrides(t *testing.T) {
+	const raw = minimalYAML + `
+capabilities:
+  can_send_image: false
+  can_send_record: true
+`
+	cfg, err := Parse([]byte(raw))
+	if err != nil {
+		t.Fatalf("Parse 返回错误: %v", err)
+	}
+	if cfg.Capabilities.CanSendImage {
+		t.Error("can_send_image 应被覆盖为假")
+	}
+	if !cfg.Capabilities.CanSendRecord {
+		t.Error("can_send_record 应被覆盖为真")
+	}
+}
+
+// TestCapabilityPartialOverride 校验只写一项时，另一项保留默认值。
+//
+// 布尔值的零值与「没有配置」无法区分，这里专门覆盖指针解码的那条路径。
+func TestCapabilityPartialOverride(t *testing.T) {
+	const raw = minimalYAML + `
+capabilities:
+  can_send_record: true
+`
+	cfg, err := Parse([]byte(raw))
+	if err != nil {
+		t.Fatalf("Parse 返回错误: %v", err)
+	}
+	if !cfg.Capabilities.CanSendImage {
+		t.Error("未配置的 can_send_image 应保留默认的真")
+	}
 }
 
 func TestParseOverridesDefaults(t *testing.T) {

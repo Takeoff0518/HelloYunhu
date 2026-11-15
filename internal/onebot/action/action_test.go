@@ -573,6 +573,29 @@ func TestMentionTextUsesNickname(t *testing.T) {
 	}
 }
 
+// TestCanSendCapabilities 校验能力声明的返回值与配置一致。
+func TestCanSendCapabilities(t *testing.T) {
+	dispatcher, _ := newDispatcher(t)
+	dispatcher.CanSendImage = true
+	dispatcher.CanSendRecord = false
+
+	image, err := dispatcher.Handle(context.Background(), "can_send_image", nil)
+	if err != nil {
+		t.Fatalf("处理失败: %v", err)
+	}
+	if image.(map[string]any)["yes"] != true {
+		t.Errorf("图片声明为 %v，期望真", image)
+	}
+
+	record, err := dispatcher.Handle(context.Background(), "can_send_record", nil)
+	if err != nil {
+		t.Fatalf("处理失败: %v", err)
+	}
+	if record.(map[string]any)["yes"] != false {
+		t.Errorf("语音声明为 %v，期望假", record)
+	}
+}
+
 // TestGetFriendList 校验好友列表返回空数组而不是 null。
 //
 // 框架按数组解析响应，null 会让遍历直接失败，所以响应必须是 []。

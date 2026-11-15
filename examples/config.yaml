@@ -30,6 +30,17 @@ yunhu:
   # 平台上限是每秒十次，默认留有余量；发送消息不做重试，这里只做匀速。
   rate_limit: 10
 
+# 向框架声明的能力。这两个值用于回答框架对 can_send_image 与 can_send_record
+# 的查询，是声明而不是开关，修改它们不会改变程序的实际行为。
+capabilities:
+  # 能否发送图片，默认 true。
+  can_send_image: true
+  # 能否发送语音气泡，默认 false。
+  # 云湖没有语音发送接口，语音只能作为文件上传。改成 true 之后，框架会认为
+  # 可以发语音并送来 record 段，程序仍然按文件发送，客户端收到的还是文件，
+  # 不会出现可点击播放的语音气泡。
+  can_send_record: false
+
 # 只读诊断接口。默认关闭，开启后提供 /healthz 与 /status 两个端点。
 diagnostics:
   enabled: false

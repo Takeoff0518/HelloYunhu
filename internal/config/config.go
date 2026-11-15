@@ -41,6 +41,8 @@ type Config struct {
 	Storage Storage `yaml:"storage"`
 	// Yunhu 是云湖平台的连接地址，所有实例共用。
 	Yunhu Yunhu `yaml:"yunhu"`
+	// Capabilities 是向框架声明的能力，所有实例共用。
+	Capabilities Capabilities `yaml:"capabilities"`
 	// Diagnostics 是只读诊断接口的设置。
 	Diagnostics Diagnostics `yaml:"diagnostics"`
 	// Instances 是机器人实例列表，至少需要一个。
@@ -81,6 +83,40 @@ type Yunhu struct {
 	//
 	// 云湖的上限是每秒十次，默认留一点余量。发送消息不做重试，这里只做匀速。
 	RateLimit int `yaml:"rate_limit"`
+}
+
+// Capabilities 是向框架声明的能力，对应 OneBot 的 can_send_image 与 can_send_record。
+//
+// 这是给框架看的声明，不是开关。声明与实际能力不一致时，框架会按错误的前提选择
+// 发送方式，问题要到客户端才暴露。
+type Capabilities struct {
+	// CanSendImage 表示能否发送图片，默认为真。
+	CanSendImage bool `yaml:"can_send_image"`
+	// CanSendRecord 表示能否发送语音，默认为假。
+	//
+	// 云湖没有语音发送接口，语音只能按文件上传，客户端收到的是文件而不是语音气泡。
+	// 改成真只会让框架发出 record 段，实际效果仍然是文件。
+	CanSendRecord bool `yaml:"can_send_record"`
+}
+
+// UnmarshalYAML 按字段是否出现决定是否覆盖默认值。
+//
+// 布尔值的零值与「没有配置」无法区分，因此先用指针接住，未出现的字段保留默认值。
+func (c *Capabilities) UnmarshalYAML(value *yaml.Node) error {
+	var raw struct {
+		CanSendImage  *bool `yaml:"can_send_image"`
+		CanSendRecord *bool `yaml:"can_send_record"`
+	}
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	if raw.CanSendImage != nil {
+		c.CanSendImage = *raw.CanSendImage
+	}
+	if raw.CanSendRecord != nil {
+		c.CanSendRecord = *raw.CanSendRecord
+	}
+	return nil
 }
 
 // Diagnostics 是只读诊断接口的设置。
@@ -156,6 +192,9 @@ func Default() *Config {
 			APIBase:      defaultAPIBase,
 			SubscribeURL: defaultSubscribeURL,
 			RateLimit:    defaultRateLimit,
+		},
+		Capabilities: Capabilities{
+			CanSendImage: true,
 		},
 		Diagnostics: Diagnostics{
 			Listen: defaultDiagnoseAddr,

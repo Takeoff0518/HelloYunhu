@@ -63,6 +63,11 @@ func Run(ctx context.Context, opt Options) error {
 		"instances", len(cfg.Instances),
 	)
 
+	// 声明与实现不一致时给一次提示：框架会按声明选择发送方式。
+	if cfg.Capabilities.CanSendRecord {
+		logger.Warn("can_send_record 声明为真，但平台没有语音发送接口，语音仍按文件发送，客户端收到的会是文件")
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

@@ -58,14 +58,16 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 	nicknames := cache.NewNicknames(0)
 
 	dispatcher := &action.Dispatcher{
-		SelfID:    selfID,
-		Nickname:  info.Nickname,
-		API:       apiClient,
-		Messages:  messages,
-		Media:     mediaLoader,
-		Recent:    recent,
-		Nicknames: nicknames,
-		Logger:    log,
+		SelfID:        selfID,
+		Nickname:      info.Nickname,
+		API:           apiClient,
+		Messages:      messages,
+		Media:         mediaLoader,
+		Recent:        recent,
+		Nicknames:     nicknames,
+		CanSendImage:  cfg.Capabilities.CanSendImage,
+		CanSendRecord: cfg.Capabilities.CanSendRecord,
+		Logger:        log,
 	}
 
 	var onebot *onebotclient.Client
