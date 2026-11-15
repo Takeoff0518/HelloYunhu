@@ -149,9 +149,11 @@
 | 群聊语音消息 | `content` 含 `etag`、`audioUrl`、`audioDuration`，`audioUrl` 是 `1ef1….wav` | 拼 `https://chat-audio1.jwznb.com/`，带来源头返回 200，类型 `audio/x-wav` |
 | `POST /bot/recall` | `{"msgId":"…","chatId":"…","chatType":"group"}` 返回 `{"code":1,"msg":"success"}`，机器人自己的消息与他人消息都能撤回 | 撤回接口可用，`chatType` 取 `user` 或 `group` |
 | 撤回后的订阅事件 | 撤回成功后订阅通道没有任何事件，日志里既无消息事件也无未知类型事件 | 云湖不推送撤回通知，只能做主动撤回，无法给框架发 `notice.message_recall` |
+| `POST /group/gag-member` | `gag` 只接受 600、3600、21600、43200，另有 0 解禁与 -1 永久；60、300、599、601、900、1800、7200、86400 返回 `1002 禁言时长错误` | 档位固定，转换层按不小于请求值的最近档位换算，超过 12 小时按 12 小时 |
+| `POST /group/remove-member` | 传 `groupId` 与 `userId` 返回 `{"code":1,"msg":"success"}`，成员被移出群 | 移除成员可用；机器人账号被移出时平台无额外提示 |
 | `GET /bot/messages` | 参数 `chat-id` 与 `chat-type=group` 时返回 `{"list":[],"total":0}`，`chat-type=bot` 被拒绝 | 接口存在但当前账号取不到历史，参数语义待确认，暂不使用 |
 
-代码同时把 `code` 为 0 与 1 视为成功，避免不同接口编码不一致时误判。`data` 结构已确认的接口有 `/bot/info`、`/bot/send`、`/bot/groups`、`/group/info` 与三个上传接口；`/group/members` 的字段名仍未确认，因为当前机器人没有该权限。
+代码同时把 `code` 为 0 与 1 视为成功，避免不同接口编码不一致时误判。`data` 结构已确认的接口有 `/bot/info`、`/bot/send`、`/bot/groups`、`/group/info`、`/group/members` 与三个上传接口；成员字段为 `userId`、`nickname`、`groupNickname` 与 `userLevel`。
 
 媒体下载另有实测结论：
 
@@ -165,7 +167,6 @@
 
 下面几项依赖真实云湖环境继续验证，代码对多种写法都做了兼容，实测后需要回来收敛：
 
-1. `/group/members` 的字段名与角色取值。接口本身需要机器人在群后台获得成员列表权限，当前测试机器人没有授权，只确认了未授权时的错误码与降级行为。
-2. 禁言与踢人的请求参数在真实环境尚未验证：`/group/gag-member` 按 `groupId`、`userId`、`gag`（秒，`-1` 为永久）组织，`/group/remove-member` 按 `groupId`、`userId` 组织，两者都需要机器人拥有对应权限。
-3. `/bot/messages` 的参数语义与返回内容，当前账号取不到数据。
-4. 撤回通知：平台不推送，无法向框架发出通知事件，只能主动撤回。
+1. `/bot/messages` 的参数语义与返回内容，当前账号取不到数据。
+2. 禁言的长期效果：600 秒档位实测生效，解禁（`gag` 为 0）与永久（`-1`）的客户端表现尚未逐一确认。
+3. 机器人账号被移出群时平台的具体行为，目前只观察到接口返回成功。
