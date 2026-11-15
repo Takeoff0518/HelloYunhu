@@ -6,7 +6,7 @@
 
 ## 环境要求
 
-Python 3.10 或更高版本。本机是 3.14，尚未实际跑通，如果依赖安装失败，换用 3.12 或 3.13 更稳妥。
+Python 3.10 或更高版本。本机用 3.14 跑通过，NoneBot2 2.5.0 与 adapter-onebot 2.4.6 可正常安装与加载。
 
 ## 启动
 
@@ -36,6 +36,7 @@ Copy-Item .env.example .env
 |---|---|
 | `plugins/echo.py` | 回复收到消息的纯文本，默认对所有消息生效 |
 | `plugins/diagnostics.py` | `/diag` 回复 `self_id`、`message_id`、`group_id`、消息段类型；`/quote` 引用当前消息再回复，用于验证 `parentId` |
+| `plugins/m2accept.py` | 主动调一组接口核对查询与发送路径，默认关闭，需要 `M2_CHECK_GROUP` 与 `M2_CHECK_USER`；`/m2check` 手动重跑 |
 
 `/diag` 的输出用于确认映射结果，例如群里 @ 机器人时 `segments` 应当包含 `at`，发图片时应当包含 `image`。
 
@@ -49,6 +50,7 @@ Copy-Item .env.example .env
 
 ## 注意
 
-- `.env`、`.venv`、`__pycache__` 都不进入版本库。
+- `.env`、`.venv`、`__pycache__` 与验收脚本生成的 `.m2check/` 都不进入版本库。
 - 第一轮测试把访问令牌留空，确认协议通后再同时设置两边的令牌。
 - 撤回、禁言、踢人、关注与入群等通知事件在 HelloYunhu 侧尚未实现，测试这些不会有反应。
+- `m2accept` 会真的往群里发消息，只在测试群启用。
