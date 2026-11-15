@@ -137,7 +137,14 @@ M2 范围之外的内容按开发计划留给 M3：撤回、禁言、踢人、�
 - `internal/diagnostics`：只读诊断服务，`GET /healthz` 返回 `ok`，`GET /status` 返回版本、启动时间、运行秒数、实例数量与两个计数，写请求返回 405。
 - `internal/app/metrics`：进程内的运行计数，事件转发与框架调用各记一次。
 - 配置新增 `yunhu.rate_limit` 与 `diagnostics.enabled`、`diagnostics.listen`，诊断服务默认关闭。
-- 尚未完成：通知类事件（关注、入群、退群）转换；验收项里的并发 10 条不乱序与双实例隔离尚未实测。
+- 尚未完成：验收项里的并发 10 条不乱序与双实例隔离尚未实测。
+
+### 通知类事件
+
+- `internal/yunhu/model`：新增关注、取关与入群、退群的负载结构，解析同时接受文档字段（`userId`、`chatId`）与下划线、`senderId` 等变体；时间戳按数量级把毫秒换算成秒。
+- `internal/bridge/event/notice.go`：四种事件转成 OneBot 的 `notice`。关注为 `friend_add`，取关用非标准的 `yunhu_friend_remove`，入群为 `group_increase` / `approve`，退群为 `group_decrease` / `leave`，`operator_id` 固定 0，原始字符串标识放在扩展字段 `yunhu` 里。
+- 缺少用户标识或群标识时记录警告后跳过，不发假事件。
+- 这四个事件还没有在真实环境抓到过：字段名以调研报告第 2.3 节为准，真实事件到达时先用 `log.raw_events` 核对字段，再确认转换结果。
 
 ### 文档与支持矩阵
 

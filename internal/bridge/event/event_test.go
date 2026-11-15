@@ -426,19 +426,6 @@ func TestConvertSkipsSelfMessage(t *testing.T) {
 	}
 }
 
-func TestConvertSkipsNoticeForNow(t *testing.T) {
-	converter := newConverter()
-
-	envelope := parse(t, `{"header":{"eventType":"bot.followed"},"event":{"userId":"10001"}}`)
-	_, ok, err := converter.Convert(context.Background(), envelope)
-	if err != nil {
-		t.Fatalf("转换失败: %v", err)
-	}
-	if ok {
-		t.Fatal("尚未实现的通知事件应当跳过")
-	}
-}
-
 func TestConvertBrokenPayload(t *testing.T) {
 	converter := newConverter()
 

@@ -9,10 +9,10 @@
 | `message.receive.normal`（群聊） | `message` / `group` / `normal` | 已实现 |
 | `message.receive.normal`（私聊，`chatType` 为 `bot`） | `message` / `private` / `friend` | 已实现 |
 | `message.receive.instruction` | 与普通消息相同；指令名拼进正文，扩展字段保留 `instruction` | 已实现 |
-| `group.join` | `notice` / `group_increase` | 未实现，记录日志后跳过 |
-| `group.leave` | `notice` / `group_decrease` | 未实现，记录日志后跳过 |
-| `bot.followed` | `notice` / `friend_add` | 未实现，记录日志后跳过 |
-| `bot.unfollowed` | 无标准类型，使用自定义 `notice_type` | 未实现 |
+| `group.join` | `notice` / `group_increase` / `approve`；`operator_id` 为 0 | 已实现 |
+| `group.leave` | `notice` / `group_decrease` / `leave`；平台不区分主动退出与被踢 | 已实现 |
+| `bot.followed` | `notice` / `friend_add` | 已实现，字段名待真实事件确认 |
+| `bot.unfollowed` | `notice` / `yunhu_friend_remove`（非标准） | 已实现，字段名待真实事件确认 |
 | 连接建立 | `meta_event` / `lifecycle` / `connect` | 已实现，握手后立即发送 |
 | 心跳 | `meta_event` / `heartbeat` | 未实现 |
 
