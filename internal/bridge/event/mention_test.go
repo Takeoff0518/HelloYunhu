@@ -13,7 +13,9 @@ import (
 )
 
 // 真实事件：群里 @机器人 发 /diag，正文里提及后面带一个零宽空格。
-const atMentionEvent = `{"version":"1.0","header":{"eventId":"0833235f32ee4cb9ab1b997ee7e886e4","eventType":"message.receive.normal","eventTime":1794713482041},"event":{"sender":{"senderId":"2272345","senderType":"user","senderUserLevel":"owner","senderNickname":"洛雨辰"},"chat":{"chatId":"695367192","chatType":"group"},"message":{"msgId":"dcfc49709b6745819d1bb3d9e260f57c","parentId":"","sendTime":1794713482029,"chatId":"695367192","chatType":"group","contentType":"text","content":{"text":"@乐正绫TwinkLing ​/diag","at":["11464576"]},"instructionId":0,"instructionName":"","commandId":0,"commandName":""}}}`
+//
+// 零宽空格写成转义序列，避免在源文件里留下不可见字符，静态检查会把它当成格式字符。
+const atMentionEvent = `{"version":"1.0","header":{"eventId":"0833235f32ee4cb9ab1b997ee7e886e4","eventType":"message.receive.normal","eventTime":1794713482041},"event":{"sender":{"senderId":"2272345","senderType":"user","senderUserLevel":"owner","senderNickname":"洛雨辰"},"chat":{"chatId":"695367192","chatType":"group"},"message":{"msgId":"dcfc49709b6745819d1bb3d9e260f57c","parentId":"","sendTime":1794713482029,"chatId":"695367192","chatType":"group","contentType":"text","content":{"text":"@乐正绫TwinkLing ` + "\u200b" + `/diag","at":["11464576"]},"instructionId":0,"instructionName":"","commandId":0,"commandName":""}}}`
 
 func TestAtMentionIsSplitOut(t *testing.T) {
 	converter := &Converter{SelfID: 11464576, BotID: "11464576", Messages: identity.NewMemory()}

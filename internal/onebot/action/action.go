@@ -67,6 +67,8 @@ func (d *Dispatcher) Handle(ctx context.Context, name string, params json.RawMes
 		return d.groupMemberList(ctx, params)
 	case "get_stranger_info":
 		return d.strangerInfo(ctx, params)
+	case "get_friend_list":
+		return d.friendList(), nil
 	case "get_msg":
 		return d.getMessage(ctx, params)
 	case "get_status":
