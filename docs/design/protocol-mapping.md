@@ -165,7 +165,7 @@
 | `GET /bot/messages` | 参数 `chat-id` 与 `chat-type=group` 时返回 `{"list":[],"total":0}`，`chat-type=bot` 被拒绝 | 接口存在但当前账号取不到历史，参数语义待确认，暂不使用 |
 | 客户端取头像的行为 | Overflow 的 `MemberWrapper.kt`、`FriendWrapper.kt`、`StrangerWrapper.kt` 与 `BotWrapper.kt` 里都是 `if (appName != "gensokyo") null else extGetAvatar(…)`，回退时用 mirai 默认的 `https://q1.qlogo.cn/g?b=qq&nk=<整数>&s=<尺寸>` | 头像由客户端自己拼；只有按名字分派的客户端才会向协议端索取地址 |
 | `get_avatar` 的约定 | 参数 `user_id` 必填，取群成员时附带 `group_id`，响应的 `data` 是地址字符串而不是对象 | Gensokyo 的扩展接口，Overflow 用它取群成员、好友、陌生人与机器人自身的头像 |
-| 云湖头像地址 | 形如 `https://chat-img.jwznb.com/8448fe….jpg`，带 `Referer: https://myapp.jwznb.com` 才能取到，缺少时返回 403 | 与媒体 CDN 同一条来源规则，客户端直接下载会失败，因此需要由本程序代理 |
+| 云湖头像地址 | 形如 `https://chat-img.jwznb.com/8448fe….jpg`，带 `Referer: https://myapp.jwznb.com` 才能取到，缺少时返回 403；取回的内容类型是 `image/webp`，与地址后缀无关 | 与媒体 CDN 同一条来源规则，客户端直接下载会失败，因此需要由本程序代理；代理按上游类型透传 |
 
 代码同时把 `code` 为 0 与 1 视为成功，避免不同接口编码不一致时误判。`data` 结构已确认的接口有 `/bot/info`、`/bot/send`、`/bot/groups`、`/group/info`、`/group/members` 与三个上传接口；成员字段为 `userId`、`nickname`、`groupNickname` 与 `userLevel`。
 
