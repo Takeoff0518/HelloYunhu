@@ -427,7 +427,7 @@ func TestSendBadParams(t *testing.T) {
 func TestUnimplementedAction(t *testing.T) {
 	dispatcher, _ := newDispatcher(t)
 
-	_, err := dispatcher.Handle(context.Background(), "set_group_ban", json.RawMessage(`{}`))
+	_, err := dispatcher.Handle(context.Background(), "set_group_whole_ban", json.RawMessage(`{}`))
 
 	var actionErr *obmodel.ActionError
 	if !errors.As(err, &actionErr) {
@@ -436,7 +436,7 @@ func TestUnimplementedAction(t *testing.T) {
 	if actionErr.Retcode != obmodel.RetcodeNotFound {
 		t.Errorf("返回码为 %d，期望 1404", actionErr.Retcode)
 	}
-	if !strings.Contains(actionErr.Wording, "set_group_ban") {
+	if !strings.Contains(actionErr.Wording, "set_group_whole_ban") {
 		t.Errorf("说明为 %q", actionErr.Wording)
 	}
 }
