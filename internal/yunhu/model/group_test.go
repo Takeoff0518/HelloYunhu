@@ -83,3 +83,22 @@ func TestGroupMemberToleratesFieldNames(t *testing.T) {
 		})
 	}
 }
+
+func TestGroupMemberRealPayload(t *testing.T) {
+	// 结构取自开启成员权限后的真实响应。
+	raw := []byte(`{"avatarUrl":"https://chat-img.jwznb.com/a.jpg","groupNickname":"群名片","nickname":"洛雨辰","userId":"2272345","userLevel":"owner"}`)
+
+	var member GroupMember
+	if err := json.Unmarshal(raw, &member); err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if member.UserID != "2272345" || member.Nickname != "洛雨辰" {
+		t.Errorf("成员为 %+v", member)
+	}
+	if member.Card != "群名片" {
+		t.Errorf("群名片为 %q", member.Card)
+	}
+	if member.Role != "owner" {
+		t.Errorf("角色为 %q", member.Role)
+	}
+}

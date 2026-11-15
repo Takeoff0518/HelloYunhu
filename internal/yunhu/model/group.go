@@ -72,8 +72,9 @@ func (g *GroupSummary) UnmarshalJSON(raw []byte) error {
 
 // GroupMember 是 GET /group/members 返回的群成员。
 //
-// 平台对该接口默认关闭，机器人没有权限时返回 1003，调用方需要降级处理。字段名
-// 尚未在真实环境确认，解析时接受常见写法。
+// 实测字段为 userId、nickname、groupNickname 与 userLevel，其中 userLevel 取
+// owner、admin 或 member。接口需要机器人在群后台获得成员列表权限，未授权时返回
+// 1003，调用方需要降级处理。
 type GroupMember struct {
 	// UserID 是成员标识。
 	UserID string `json:"-"`
@@ -85,16 +86,18 @@ type GroupMember struct {
 	Role string `json:"-"`
 }
 
-// UnmarshalJSON 解析群成员，标识与昵称同时接受几种常见写法。
+// UnmarshalJSON 解析群成员，同时接受实测字段与几种常见写法。
 func (m *GroupMember) UnmarshalJSON(raw []byte) error {
 	var value struct {
-		UserID   string `json:"userId"`
-		SenderID string `json:"senderId"`
-		ID       string `json:"id"`
-		Nickname string `json:"nickname"`
-		NickName string `json:"nickName"`
-		Card     string `json:"card"`
-		Role     string `json:"role"`
+		UserID    string `json:"userId"`
+		SenderID  string `json:"senderId"`
+		ID        string `json:"id"`
+		Nickname  string `json:"nickname"`
+		NickName  string `json:"nickName"`
+		GroupName string `json:"groupNickname"`
+		Card      string `json:"card"`
+		UserLevel string `json:"userLevel"`
+		Role      string `json:"role"`
 	}
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return err
@@ -102,8 +105,8 @@ func (m *GroupMember) UnmarshalJSON(raw []byte) error {
 
 	m.UserID = firstNonEmpty(value.UserID, value.SenderID, value.ID)
 	m.Nickname = firstNonEmpty(value.Nickname, value.NickName)
-	m.Card = value.Card
-	m.Role = value.Role
+	m.Card = firstNonEmpty(value.Card, value.GroupName)
+	m.Role = firstNonEmpty(value.Role, value.UserLevel)
 
 	return nil
 }

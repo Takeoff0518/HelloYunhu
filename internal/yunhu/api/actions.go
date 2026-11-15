@@ -54,8 +54,8 @@ func recallChatType(chatType string) (string, error) {
 
 // GagMember 禁言群成员。
 //
-// duration 的单位是秒，0 表示解除禁言，-1 表示永久。平台要求群主或管理员给机器人
-// 开启禁言权限，没有权限时返回业务错误，调用方原样上报。
+// duration 的单位是秒，平台只接受固定档位：600、3600、21600、43200，另有 0 表示
+// 解禁、-1 表示永久，其它取值会以 1002「禁言时长错误」被拒绝。换算由调用方负责。
 func (c *Client) GagMember(ctx context.Context, groupID, userID string, duration int) error {
 	if groupID == "" || userID == "" {
 		return errors.New("禁言缺少群标识或成员标识")

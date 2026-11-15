@@ -70,21 +70,57 @@ func (d *Dispatcher) deleteMessage(ctx context.Context, params json.RawMessage) 
 	return map[string]any{}, nil
 }
 
+// banPresets 是云湖接受的禁言时长档位，单位秒。
+//
+// 实测只有这几档通过校验，其它值返回 1002「禁言时长错误」，例如 60、300、900、
+// 1800、7200、86400 都会被拒绝。0 表示解禁，-1 表示永久。
+var banPresets = []int{600, 3600, 21600, 43200}
+
 // setGroupBan 处理 set_group_ban。
 //
-// duration 为 0 时解除禁言，为负数时按永久禁言处理（云湖用 -1 表示永久）。
+// OneBot 只要求给出秒数，云湖只接受固定档位，因此按不小于请求值的最近档位换算。
+// duration 为 0 时解除禁言，为负数时按永久禁言处理。
 func (d *Dispatcher) setGroupBan(ctx context.Context, params json.RawMessage) (any, error) {
 	value, err := d.parseManageParams("set_group_ban", params)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := d.API.GagMember(ctx, strconv.FormatInt(value.GroupID, 10), strconv.FormatInt(value.UserID, 10), value.Duration); err != nil {
+	duration, exact := normalizeBanDuration(value.Duration)
+	if duration != value.Duration {
+		d.logger().Debug("禁言时长换算为平台档位",
+			"requested", value.Duration,
+			"actual", duration,
+			"exact", exact,
+		)
+	}
+	if err := d.API.GagMember(ctx, strconv.FormatInt(value.GroupID, 10), strconv.FormatInt(value.UserID, 10), duration); err != nil {
 		return nil, fmt.Errorf("禁言成员: %w", err)
 	}
 
-	d.logger().Debug("已设置禁言", "group_id", value.GroupID, "user_id", value.UserID, "duration", value.Duration)
+	d.logger().Debug("已设置禁言", "group_id", value.GroupID, "user_id", value.UserID, "duration", duration)
 	return map[string]any{}, nil
+}
+
+// normalizeBanDuration 把请求的秒数换算成云湖接受的档位。
+//
+// 第二个返回值表示请求值是否正好等于档位。0 与负数分别对应解禁与永久，超过最长档位
+// 时按最长档位处理，避免把参数原样发过去被平台拒绝。
+func normalizeBanDuration(seconds int) (int, bool) {
+	switch {
+	case seconds == 0:
+		return 0, true
+	case seconds < 0:
+		return -1, true
+	}
+
+	for _, preset := range banPresets {
+		if seconds <= preset {
+			return preset, seconds == preset
+		}
+	}
+
+	return banPresets[len(banPresets)-1], false
 }
 
 // setGroupKick 处理 set_group_kick。
