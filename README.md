@@ -33,7 +33,7 @@ HelloYunhu 补上的就是这一层。对于机器人框架，它表现为一个
 | 接口 | 发送、查询、撤回、禁言、踢人与快速操作可用，未实现的接口返回 1404 |
 | 群管理 | 撤回、禁言（四个档位）、踢人 |
 | 稳定性 | 两条连接断线重连、标识与会话归属落库、接口限流、只读诊断接口 |
-| 发行 | 当前为私有仓库，尚未发布；Docker 镜像与 Webhook 接收未开始 |
+| 发行 | 三平台发行包流程已配置，尚未打 tag；Webhook 接收与 Docker 镜像未开始 |
 
 单条能力的状态、限制与原因见[功能支持情况](docs/guides/compatibility.md)。那份表是唯一的清单，随代码一起更新。
 
@@ -43,6 +43,7 @@ HelloYunhu 补上的就是这一层。对于机器人框架，它表现为一个
 - [项目状态](docs/design/status.md)
 - [架构说明](docs/design/architecture.md)
 - [功能支持情况](docs/guides/compatibility.md)
+- [更新记录](CHANGELOG.md)
 - [文档索引](docs/README.md)
 - [调研材料](docs/research/)
 
