@@ -27,8 +27,8 @@ type manageParams struct {
 
 // deleteMessage 处理 delete_msg，按会话信息调用撤回接口。
 //
-// OneBot 只给消息标识，云湖还需要会话标识与类型，因此依赖消息归属缓存。缓存是进程
-// 内的，重启后撤回旧消息会返回 1404，而不是猜一个会话。
+// OneBot 只给消息标识，云湖还需要会话标识与类型。两者随标识映射一起落库，进程重启
+// 后仍然可以撤回旧消息。
 func (d *Dispatcher) deleteMessage(ctx context.Context, params json.RawMessage) (any, error) {
 	var value deleteParams
 	if err := json.Unmarshal(params, &value); err != nil {
@@ -40,11 +40,14 @@ func (d *Dispatcher) deleteMessage(ctx context.Context, params json.RawMessage) 
 		return nil, &obmodel.ActionError{Retcode: obmodel.RetcodeBadRequest, Wording: "delete_msg 缺少 message_id"}
 	}
 
-	origin, ok := d.Origins.Get(messageID)
+	chatID, chatType, ok, err := d.Messages.Origin(ctx, messageID)
+	if err != nil {
+		return nil, fmt.Errorf("查询消息归属: %w", err)
+	}
 	if !ok {
 		return nil, &obmodel.ActionError{
 			Retcode: obmodel.RetcodeNotFound,
-			Wording: fmt.Sprintf("消息 %d 不在最近的记录中，可能是重启前发收的消息", messageID),
+			Wording: fmt.Sprintf("消息 %d 没有记录会话信息，无法撤回", messageID),
 		}
 	}
 
@@ -59,11 +62,11 @@ func (d *Dispatcher) deleteMessage(ctx context.Context, params json.RawMessage) 
 		}
 	}
 
-	if err := d.API.Recall(ctx, origin.ChatType, origin.ChatID, msgID); err != nil {
+	if err := d.API.Recall(ctx, chatType, chatID, msgID); err != nil {
 		return nil, fmt.Errorf("撤回消息: %w", err)
 	}
 
-	d.logger().Debug("已撤回消息", "message_id", messageID, "chat_type", origin.ChatType)
+	d.logger().Debug("已撤回消息", "message_id", messageID, "chat_type", chatType)
 	return map[string]any{}, nil
 }
 

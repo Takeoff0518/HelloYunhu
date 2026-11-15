@@ -11,7 +11,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Takeoff0518/HelloYunhu/internal/bridge/cache"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/identity"
 	obmodel "github.com/Takeoff0518/HelloYunhu/internal/onebot/model"
 	"github.com/Takeoff0518/HelloYunhu/internal/yunhu/api"
@@ -50,7 +49,6 @@ func newManageDispatcher(t *testing.T) (*Dispatcher, *[]recordedCall) {
 		SelfID:   1001,
 		API:      client,
 		Messages: identity.NewMemory(),
-		Origins:  cache.NewOrigins(0),
 	}
 
 	return dispatcher, &calls
@@ -63,7 +61,9 @@ func TestDeleteMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("分配标识失败: %v", err)
 	}
-	dispatcher.Origins.Put(messageID, "695367192", "group")
+	if err := dispatcher.Messages.SaveOrigin(context.Background(), messageID, "695367192", "group"); err != nil {
+		t.Fatalf("记录归属失败: %v", err)
+	}
 
 	params := json.RawMessage(`{"message_id":1}`)
 	if _, err := dispatcher.Handle(context.Background(), "delete_msg", params); err != nil {
@@ -90,7 +90,9 @@ func TestDeleteMessageMapsPrivateChatType(t *testing.T) {
 		t.Fatalf("分配标识失败: %v", err)
 	}
 	// 私聊事件里的会话类型是 bot，撤回接口要的是 user。
-	dispatcher.Origins.Put(messageID, "2272345", "bot")
+	if err := dispatcher.Messages.SaveOrigin(context.Background(), messageID, "2272345", "bot"); err != nil {
+		t.Fatalf("记录归属失败: %v", err)
+	}
 
 	if _, err := dispatcher.Handle(context.Background(), "delete_msg", json.RawMessage(`{"message_id":1}`)); err != nil {
 		t.Fatalf("撤回失败: %v", err)

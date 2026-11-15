@@ -15,12 +15,16 @@ import (
 	"sync"
 )
 
-// MessageStore 保存消息标识的映射关系。
+// MessageStore 保存消息标识的映射关系与会话归属。
 type MessageStore interface {
 	// MessageID 返回云湖消息标识对应的整数，没有记录时分配一个新的。
 	MessageID(ctx context.Context, msgID string) (int64, error)
 	// MsgID 按整数反查云湖消息标识，没有记录时第二个返回值为 false。
 	MsgID(ctx context.Context, messageID int64) (string, bool, error)
+	// SaveOrigin 记录消息属于哪个会话，撤回时需要。
+	SaveOrigin(ctx context.Context, messageID int64, chatID, chatType string) error
+	// Origin 返回消息的会话归属，没有记录时第三个返回值为 false。
+	Origin(ctx context.Context, messageID int64) (chatID, chatType string, ok bool, err error)
 }
 
 // Memory 是内存实现。
@@ -32,6 +36,13 @@ type Memory struct {
 	next    int64
 	byMsgID map[string]int64
 	byID    map[int64]string
+	origins map[int64]origin
+}
+
+// origin 是消息的会话归属。
+type origin struct {
+	ChatID   string
+	ChatType string
 }
 
 // NewMemory 创建内存映射表。整数从 1 开始分配，0 留作无效值。
@@ -40,6 +51,7 @@ func NewMemory() *Memory {
 		next:    1,
 		byMsgID: make(map[string]int64),
 		byID:    make(map[int64]string),
+		origins: make(map[int64]origin),
 	}
 }
 
@@ -71,6 +83,28 @@ func (m *Memory) MsgID(_ context.Context, messageID int64) (string, bool, error)
 
 	msgID, ok := m.byID[messageID]
 	return msgID, ok, nil
+}
+
+// SaveOrigin 记录消息的会话归属。
+func (m *Memory) SaveOrigin(_ context.Context, messageID int64, chatID, chatType string) error {
+	if messageID <= 0 || chatID == "" {
+		return nil
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.origins[messageID] = origin{ChatID: chatID, ChatType: chatType}
+	return nil
+}
+
+// Origin 返回消息的会话归属。
+func (m *Memory) Origin(_ context.Context, messageID int64) (string, string, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	value, ok := m.origins[messageID]
+	return value.ChatID, value.ChatType, ok, nil
 }
 
 // ParseID 把云湖的数字标识转换为 OneBot 的整数标识。
