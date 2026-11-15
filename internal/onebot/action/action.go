@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/cache"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/identity"
@@ -39,6 +40,8 @@ type Dispatcher struct {
 	Media *media.Loader
 	// Recent 保存最近的消息事件，供 get_msg 回放。
 	Recent *cache.Messages
+	// Nicknames 记录见过的昵称，发送 @ 时把正文里的标识换成昵称。
+	Nicknames *cache.Nicknames
 	// Logger 为空时丢弃日志。
 	Logger *slog.Logger
 }
@@ -229,7 +232,7 @@ func (d *Dispatcher) buildRequest(ctx context.Context, recvType, recvID string, 
 		return request, nil
 	}
 
-	content := map[string]any{"text": part.Text}
+	content := map[string]any{"text": d.mentionText(part.Text, part.At)}
 	if len(part.At) > 0 {
 		content["at"] = part.At
 	}
@@ -237,6 +240,26 @@ func (d *Dispatcher) buildRequest(ctx context.Context, recvType, recvID string, 
 	request.Content = content
 
 	return request, nil
+}
+
+// mentionText 把正文里的 @标识 换成 @昵称。
+//
+// 云湖的正文需要昵称才会显示成提及，只给 at 数组时客户端显示的是标识。昵称来自
+// 见过的消息事件，取不到时保持标识，至少还能看出 @ 的是谁。
+func (d *Dispatcher) mentionText(text string, at []string) string {
+	if d.Nicknames == nil {
+		return text
+	}
+
+	for _, id := range at {
+		nickname, ok := d.Nicknames.Get(id)
+		if !ok {
+			continue
+		}
+		text = strings.ReplaceAll(text, "@"+id, "@"+nickname)
+	}
+
+	return text
 }
 
 // uploadMedia 读取媒体内容并上传，返回云湖的内容类型与内容。

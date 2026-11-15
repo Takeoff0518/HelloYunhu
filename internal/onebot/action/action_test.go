@@ -552,3 +552,23 @@ func TestSendSingleSegmentMessage(t *testing.T) {
 		t.Errorf("正文为 %q", content["text"])
 	}
 }
+
+func TestMentionTextUsesNickname(t *testing.T) {
+	nicknames := cache.NewNicknames(0)
+	nicknames.Set("2272345", "洛雨辰")
+	dispatcher := &Dispatcher{Nicknames: nicknames}
+
+	if got := dispatcher.mentionText("@2272345 你好", []string{"2272345"}); got != "@洛雨辰 你好" {
+		t.Errorf("正文为 %q", got)
+	}
+
+	// 没见过的用户保持标识，正文至少要能看出 @ 的是谁。
+	if got := dispatcher.mentionText("@999 你好", []string{"999"}); got != "@999 你好" {
+		t.Errorf("正文为 %q", got)
+	}
+
+	// 没有昵称缓存时不做替换。
+	if got := (&Dispatcher{}).mentionText("@2272345 你好", []string{"2272345"}); got != "@2272345 你好" {
+		t.Errorf("正文为 %q", got)
+	}
+}
