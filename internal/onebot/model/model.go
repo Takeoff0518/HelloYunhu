@@ -174,6 +174,10 @@ type YunhuExtension struct {
 	ChatID   string `json:"chat_id"`
 	ChatType string `json:"chat_type"`
 	EventID  string `json:"event_id,omitempty"`
+	// Instruction 是指令消息的指令名，普通消息为空。
+	//
+	// 指令名已经拼进正文，便于框架按正文匹配命令；这个字段留给需要精确判断的插件。
+	Instruction string `json:"instruction,omitempty"`
 }
 
 // MessageEvent 是消息事件。

@@ -8,13 +8,15 @@
 |---|---|---|
 | `message.receive.normal`（群聊） | `message` / `group` / `normal` | 已实现 |
 | `message.receive.normal`（私聊，`chatType` 为 `bot`） | `message` / `private` / `friend` | 已实现 |
-| `message.receive.instruction` | 与普通消息相同，附加扩展字段 | 按普通消息处理 |
+| `message.receive.instruction` | 与普通消息相同；指令名拼进正文，扩展字段保留 `instruction` | 已实现 |
 | `group.join` | `notice` / `group_increase` | 未实现，记录日志后跳过 |
 | `group.leave` | `notice` / `group_decrease` | 未实现，记录日志后跳过 |
 | `bot.followed` | `notice` / `friend_add` | 未实现，记录日志后跳过 |
 | `bot.unfollowed` | 无标准类型，使用自定义 `notice_type` | 未实现 |
 | 连接建立 | `meta_event` / `lifecycle` / `connect` | 已实现，握手后立即发送 |
 | 心跳 | `meta_event` / `heartbeat` | 未实现 |
+
+指令消息的指令名放在 `instructionName`，正文只有参数。OneBot 没有原生命令，框架按正文匹配命令，因此转换时把指令名与正文拼成一条消息：指令名 `/quote`、正文 `test` 会拼成 `/quote test`。原始指令名同时保留在扩展字段 `yunhu.instruction` 中，需要精确判断的插件可以直接读它。
 
 消息事件中的字段对应关系：
 
@@ -111,6 +113,7 @@
 | `message.receive.normal` 事件 | `senderUserLevel` 为 `"owner"` 这类字符串，`senderType` 为 `"user"`；`instructionId` 与 `commandId` 位于 `message` 内且为数字 | 角色是字符串而不是等级数字，指令标识在消息体内 |
 | 群聊文本消息 | `chat.chatType` 为 `group`，`msgId` 为 32 位十六进制，`contentType` 为 `text`，`content` 只含 `text` | 与调研结论一致，`at` 数组只在需要时出现 |
 | 群聊图片消息 | `content` 含 `imageUrl`、`imageName`、`etag`、`imageWidth`、`imageHeight` | 图片内容字段可用，`imageKey` 只在上传后的场景出现 |
+| `message.receive.instruction` 事件 | `instructionName` 与 `commandName` 均为 `/quote`，正文 `text` 只有参数 `test` | 指令名不在正文里，需拼回正文才能让框架匹配命令 |
 | `POST /bot/send` 成功 | `{"messageInfo":{"msgId":"…","recvId":"…","recvType":"…"}}` | 消息标识在 `messageInfo.msgId`，不在顶层 |
 
 代码同时把 `code` 为 0 与 1 视为成功，避免不同接口编码不一致时误判。成功响应的 `data` 结构只对 `/bot/info` 与 `/bot/send` 确认过，其余接口仍按常见写法解析。

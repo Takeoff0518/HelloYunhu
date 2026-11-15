@@ -139,6 +139,53 @@ func TestConvertRealTextMessage(t *testing.T) {
 	}
 }
 
+// realInstructionMessage 是云湖客户端用 /quote 指令发消息时推送的事件，正文只有参数。
+const realInstructionMessage = `{
+  "version": "1.0",
+  "header": {"eventId": "evt-instr", "eventTime": 1794710180623, "eventType": "message.receive.instruction"},
+  "event": {
+    "sender": {"senderId": "2272345", "senderType": "user", "senderUserLevel": "owner", "senderNickname": "洛雨辰"},
+    "chat": {"chatId": "695367192", "chatType": "group"},
+    "message": {
+      "msgId": "9580332887de4380bc9a808030f9a8a2",
+      "chatId": "695367192",
+      "chatType": "group",
+      "contentType": "text",
+      "content": {"text": "test"},
+      "instructionId": 2755,
+      "instructionName": "/quote",
+      "commandId": 2755,
+      "commandName": "/quote"
+    }
+  }
+}`
+
+func TestConvertInstructionMessage(t *testing.T) {
+	converter := newConverter()
+
+	got, ok, err := converter.Convert(context.Background(), parse(t, realInstructionMessage))
+	if err != nil {
+		t.Fatalf("转换失败: %v", err)
+	}
+	if !ok {
+		t.Fatal("指令消息应当发送给框架")
+	}
+
+	event := got.(*obmodel.MessageEvent)
+
+	// 指令名拼回正文，框架才能按正文匹配命令。
+	if event.RawMessage != "/quote test" {
+		t.Errorf("原始消息为 %q，期望 /quote test", event.RawMessage)
+	}
+	data, isText := event.Message[0].Data.(obmodel.TextData)
+	if !isText || data.Text != "/quote test" {
+		t.Errorf("消息段为 %#v", event.Message[0].Data)
+	}
+	if event.Yunhu == nil || event.Yunhu.Instruction != "/quote" {
+		t.Errorf("扩展字段为 %+v", event.Yunhu)
+	}
+}
+
 func TestConvertGroupMessage(t *testing.T) {
 	converter := newConverter()
 
