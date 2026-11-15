@@ -249,11 +249,23 @@ func (c *Client) execute(request *http.Request, op string) (json.RawMessage, err
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return nil, fmt.Errorf("云湖接口 %s 的响应不是合法 JSON: %w（原始响应: %s）", op, err, excerpt(raw))
 	}
-	if parsed.Code != 0 {
+	if !isSuccessCode(parsed.Code) {
 		return nil, &APIError{Code: parsed.Code, Message: parsed.message(), Op: op, Body: excerpt(raw)}
 	}
 
 	return parsed.Data, nil
+}
+
+// 成功码。云湖在成功时返回 1，实测于 GET /bot/info；早期文档与示例里也出现过 0，
+// 一并按成功处理，避免因为编码差异误判。错误码是四位数字，例如 1003 与 1007。
+const (
+	codeSuccess      = 1
+	codeSuccessPlain = 0
+)
+
+// isSuccessCode 判断响应的结果码是否表示成功。
+func isSuccessCode(code int) bool {
+	return code == codeSuccess || code == codeSuccessPlain
 }
 
 // excerpt 截取响应片段用于错误信息，避免异常响应把日志冲掉。
