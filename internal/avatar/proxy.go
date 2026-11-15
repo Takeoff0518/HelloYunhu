@@ -293,9 +293,11 @@ func (p *Proxy) Run(ctx context.Context, listen string) error {
 	}
 
 	done := make(chan struct{})
+	var serveErr error
 	go func() {
 		defer close(done)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serveErr = err
 			p.logger().Error("头像代理退出", "listen", listen, "err", err)
 		}
 	}()
@@ -313,6 +315,8 @@ func (p *Proxy) Run(ctx context.Context, listen string) error {
 		return err
 	}
 
+	// 端口被占用时 ListenAndServe 立即返回，这里把错误交回上层，由启动流程
+	// 记录下来并停止进程，而不是留下一个看起来在跑、实际没有代理的实例。
 	<-done
-	return nil
+	return serveErr
 }
