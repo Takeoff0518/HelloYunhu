@@ -33,7 +33,7 @@ bot.token: 不能为空
   line 1: field instances not found in type config.Config
 ```
 
-程序拒绝未知字段。旧版的多实例配置使用 `instances`，当前版本改成 `bot`、`receive` 与 `onebot` 三段，项目尚未发布，旧配置需要按[配置说明](configuration.md)重写。
+程序拒绝未知字段。旧版的多实例配置使用 `instances`，当前版本改成 `bot`、`receive` 与 `onebot` 三段，旧配置需要按[配置说明](configuration.md)重写。
 
 ### 端口已被占用
 
@@ -111,7 +111,7 @@ level=INFO msg=接口调用未成功 action=delete_msg retcode=1404 wording="消
 错误: 获取机器人信息: 云湖接口 GET /bot/info 返回错误码 1003: 非法token（原始响应: {"code":1003,"msg":"非法token"}）
 ```
 
-云湖拒绝了机器人令牌。到机器人后台核对令牌，或者重置之后更新 `bot.token`。原始响应附在错误信息末尾，字段名与平台实际返回不一致时会一并显示，反馈问题时保留这一段。
+云湖拒绝了机器人令牌。到[云湖](https://www.yhchat.com/)机器人后台核对令牌，或者重置之后更新 `bot.token`。原始响应附在错误信息末尾，字段名与平台实际返回不一致时会一并显示，反馈问题时保留这一段。
 
 ### 订阅连接握手失败，状态码 401
 

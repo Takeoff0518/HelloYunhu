@@ -1,6 +1,6 @@
 # 功能支持情况
 
-本文档记录当前版本在云湖机器人开放平台与 OneBot v11 之间的能力对照，逐项标明状态、限制与原因。协议细节见 [协议映射说明](../design/protocol-mapping.md)，测试方法见 [测试指南](testing.md)。
+本文档记录当前版本在[云湖](https://www.yhchat.com/)机器人开放平台与 [OneBot v11](https://github.com/botuniverse/onebot-11) 之间的能力对照，逐项标明状态、限制与原因。协议细节见 [协议映射说明](../design/protocol-mapping.md)，测试方法见 [测试指南](testing.md)。
 
 ## 1. 状态符号
 
