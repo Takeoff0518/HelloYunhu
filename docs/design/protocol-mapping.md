@@ -167,6 +167,7 @@
 | `get_avatar` 的约定 | 参数 `user_id` 必填，取群成员时附带 `group_id`，响应的 `data` 是地址字符串而不是对象 | Gensokyo 的扩展接口，Overflow 用它取群成员、好友、陌生人与机器人自身的头像 |
 | 云湖头像地址 | 形如 `https://chat-img.jwznb.com/8448fe….jpg`，带 `Referer: https://myapp.jwznb.com` 才能取到，缺少时返回 403；301 跳到 `chat-img3.jwznb.com` 后是 `.webp` 文件，取回类型为 `image/webp` | 与媒体 CDN 同一条来源规则，客户端直接下载会失败，因此需要由本程序代理；地址后缀与真实格式无关，代理解码后转成 JPEG 或 PNG |
 | webp 头像在客户端的表现 | PatPat 插件读取头像后抛 `java.lang.NullPointerException: Cannot invoke "java.awt.image.BufferedImage.getWidth()" because "avatarImage" is null` | Java 的 `ImageIO` 不支持 webp，读到 null；这也是代理必须转码的原因 |
+| `POST /bot/send`，图片内容带 `parentId` | 请求成功并返回 `messageInfo.msgId`，撤回同样成功 | `parentId` 与内容类型无关，引用可以挂在图片消息上，不必退化成一条文本 |
 
 代码同时把 `code` 为 0 与 1 视为成功，避免不同接口编码不一致时误判。`data` 结构已确认的接口有 `/bot/info`、`/bot/send`、`/bot/groups`、`/group/info`、`/group/members` 与三个上传接口；成员字段为 `userId`、`nickname`、`groupNickname` 与 `userLevel`。
 

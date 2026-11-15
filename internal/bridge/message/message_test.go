@@ -202,6 +202,53 @@ func TestSplitSplitsAroundImage(t *testing.T) {
 	}
 }
 
+func TestSplitImageWithReply(t *testing.T) {
+	// 框架经常把引用与图片放在同一条消息里，例如 PatPat 的回复。
+	// 只有引用没有正文时，引用应当挂到图片消息上，而不是被丢掉。
+	parts, err := Split([]obmodel.InSegment{
+		segment(t, "reply", obmodel.ReplyData{ID: obmodel.IDValue(41)}),
+		segment(t, "image", obmodel.ImageData{File: "base64://abc"}),
+	})
+	if err != nil {
+		t.Fatalf("拆分失败: %v", err)
+	}
+
+	if len(parts) != 1 {
+		t.Fatalf("段数为 %d，期望 1", len(parts))
+	}
+	if parts[0].Media == nil {
+		t.Fatalf("段应为媒体: %+v", parts[0])
+	}
+	if parts[0].ReplyMessageID != 41 {
+		t.Errorf("引用目标为 %d，期望 41", parts[0].ReplyMessageID)
+	}
+	if parts[0].Text != "" {
+		t.Errorf("媒体段不应带文本: %+v", parts[0])
+	}
+}
+
+func TestSplitReplyStaysOnText(t *testing.T) {
+	// 有正文时引用仍然挂到第一条文本消息上，图片不重复携带。
+	parts, err := Split([]obmodel.InSegment{
+		segment(t, "reply", obmodel.ReplyData{ID: obmodel.IDValue(41)}),
+		segment(t, "text", obmodel.TextData{Text: "看图"}),
+		segment(t, "image", obmodel.ImageData{File: "base64://abc"}),
+	})
+	if err != nil {
+		t.Fatalf("拆分失败: %v", err)
+	}
+
+	if len(parts) != 2 {
+		t.Fatalf("段数为 %d，期望 2", len(parts))
+	}
+	if parts[0].ReplyMessageID != 41 {
+		t.Errorf("文本段的引用目标为 %d", parts[0].ReplyMessageID)
+	}
+	if parts[1].ReplyMessageID != 0 {
+		t.Errorf("图片段不应再带引用，当前为 %d", parts[1].ReplyMessageID)
+	}
+}
+
 func TestSplitImageOnly(t *testing.T) {
 	parts, err := Split([]obmodel.InSegment{
 		segment(t, "image", obmodel.ImageData{File: "base64://abc"}),

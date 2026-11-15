@@ -308,8 +308,17 @@ func Split(segments []obmodel.InSegment) ([]Part, error) {
 			if err != nil {
 				return nil, err
 			}
-			flush()
-			parts = append(parts, Part{Media: &MediaPart{Kind: segment.Type, Source: source, Name: name}})
+			media := &MediaPart{Kind: segment.Type, Source: source, Name: name}
+			part := Part{Media: media}
+			// 只有引用、没有正文时把引用挂到媒体消息上，否则引用会被 flush 丢掉。
+			// 云湖的 parentId 与内容类型无关，图片消息同样可以携带。
+			if builder.Len() == 0 && len(current.At) == 0 {
+				part.ReplyMessageID = current.ReplyMessageID
+				current.ReplyMessageID = 0
+			} else {
+				flush()
+			}
+			parts = append(parts, part)
 
 		case "face", "mface", "dice", "rps":
 			builder.WriteString(PlaceholderFace)
