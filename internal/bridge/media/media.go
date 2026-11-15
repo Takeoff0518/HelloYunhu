@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-// defaultMaxBytes 是单次读取的上限。图片上限 10 MB，文件与视频 20 MB。
+// defaultMaxBytes 是单次读取的上限。图片、文件、视频与语音共用这一个上限。
 const defaultMaxBytes = 20 << 20
 
 // downloadTimeout 是下载超时时间。
