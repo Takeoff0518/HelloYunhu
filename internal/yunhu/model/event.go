@@ -67,19 +67,17 @@ type MessageEvent struct {
 	Sender  Sender  `json:"sender"`
 	Chat    Chat    `json:"chat"`
 	Message Message `json:"message"`
-
-	// 下面四个字段只在指令消息中出现。
-	InstructionID   string `json:"instructionId"`
-	InstructionName string `json:"instructionName"`
-	CommandID       string `json:"commandId"`
-	CommandName     string `json:"commandName"`
 }
 
 // Sender 是消息发送者。
+//
+// SenderUserLevel 实测是字符串，取值为 owner、admin、member 这类角色，而不是等级
+// 数字。早期调研把它记成数字，实际事件里是 "owner"。
 type Sender struct {
 	SenderID        string `json:"senderId"`
+	SenderType      string `json:"senderType"`
 	SenderNickname  string `json:"senderNickname"`
-	SenderUserLevel int    `json:"senderUserLevel"`
+	SenderUserLevel string `json:"senderUserLevel"`
 	SenderAvatarURL string `json:"senderAvatarUrl"`
 }
 
@@ -101,6 +99,12 @@ type Message struct {
 	ContentType string `json:"contentType"`
 	// Content 的结构由 ContentType 决定，需要按类型解析。
 	Content json.RawMessage `json:"content"`
+
+	// 下面四个字段只在指令消息中出现，实测位于 message 内，标识为数字。
+	InstructionID   int64  `json:"instructionId"`
+	InstructionName string `json:"instructionName"`
+	CommandID       int64  `json:"commandId"`
+	CommandName     string `json:"commandName"`
 }
 
 // TextContent 是 contentType 为 text 时的消息内容。

@@ -13,7 +13,7 @@ const sampleEvent = `{
   "version": "1.0",
   "header": {"eventId": "evt-1", "eventTime": 1761936492340, "eventType": "message.receive.normal"},
   "event": {
-    "sender": {"senderId": "10001", "senderNickname": "小明", "senderUserLevel": 1, "senderAvatarUrl": "https://cdn.example.com/a.png"},
+    "sender": {"senderId": "10001", "senderNickname": "小明", "senderUserLevel": "owner", "senderAvatarUrl": "https://cdn.example.com/a.png"},
     "chat": {"chatId": "20001", "chatType": "group"},
     "message": {
       "msgId": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
