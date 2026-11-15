@@ -228,9 +228,10 @@ type Part struct {
 // 框架，而不是发出残缺的消息。
 func Split(segments []obmodel.InSegment) ([]Part, error) {
 	var (
-		parts   []Part
-		current Part
-		builder strings.Builder
+		parts        []Part
+		current      Part
+		builder      strings.Builder
+		pendingNodes []obmodel.InSegment
 	)
 
 	flush := func() {
@@ -243,7 +244,33 @@ func Split(segments []obmodel.InSegment) ([]Part, error) {
 		builder.Reset()
 	}
 
+	// flushForward 把累积的转发节点展开成文本段，排在当前文本之后。
+	flushForward := func() error {
+		if len(pendingNodes) == 0 {
+			return nil
+		}
+		texts, err := forwardText(pendingNodes)
+		if err != nil {
+			return err
+		}
+		flush()
+		for _, text := range texts {
+			parts = append(parts, Part{Text: text})
+		}
+		pendingNodes = nil
+		return nil
+	}
+
 	for index, segment := range segments {
+		// 连续的转发节点合并成一条转发消息，一起展开。
+		if isForwardSegment(segment) {
+			pendingNodes = append(pendingNodes, segment)
+			continue
+		}
+		if err := flushForward(); err != nil {
+			return nil, err
+		}
+
 		switch segment.Type {
 		case "text":
 			var data obmodel.TextData
@@ -286,13 +313,16 @@ func Split(segments []obmodel.InSegment) ([]Part, error) {
 
 		case "face", "mface", "dice", "rps":
 			builder.WriteString(PlaceholderFace)
-		case "json", "xml", "markdown", "node", "forward", "poke":
+		case "json", "xml", "markdown", "poke":
 			builder.WriteString("[暂不支持的消息段: " + segment.Type + "]")
 		default:
 			builder.WriteString("[未知消息段: " + segment.Type + "]")
 		}
 	}
 
+	if err := flushForward(); err != nil {
+		return nil, err
+	}
 	flush()
 
 	if len(parts) == 0 {

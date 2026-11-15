@@ -240,7 +240,7 @@ func TestSplitAtAsStringAndAll(t *testing.T) {
 func TestSplitPlaceholders(t *testing.T) {
 	parts, err := Split([]obmodel.InSegment{
 		{Type: "face", Data: json.RawMessage(`{"id":"1"}`)},
-		{Type: "node", Data: json.RawMessage(`{}`)},
+		{Type: "poke", Data: json.RawMessage(`{}`)},
 	})
 	if err != nil {
 		t.Fatalf("拆分失败: %v", err)
@@ -248,7 +248,7 @@ func TestSplitPlaceholders(t *testing.T) {
 	if len(parts) != 1 {
 		t.Fatalf("段数为 %d", len(parts))
 	}
-	for _, want := range []string{PlaceholderFace, "暂不支持的消息段: node"} {
+	for _, want := range []string{PlaceholderFace, "暂不支持的消息段: poke"} {
 		if !strings.Contains(parts[0].Text, want) {
 			t.Errorf("正文 %q 中缺少 %q", parts[0].Text, want)
 		}
