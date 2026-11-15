@@ -109,6 +109,8 @@
 
 上传前会按内容探测结果补齐文件名后缀，并去掉名字里的目录部分。云湖按文件名后缀判断上传类型：图片接口只接受图片后缀，视频接口只接受 mp4，后缀与接口不匹配时返回 `code -1`。OneBot 侧给出的媒体经常没有可用后缀，`base64://` 形式的内容在读取环节统一叫 `upload.bin`，直接上传会被拒绝。实测数据见第 5 节。
 
+头像不走 OneBot 的协议字段，事件与查询结果里都没有它的位置。客户端通常把整数标识当作 QQ 号去 qlogo 取图，换成非 QQ 平台就会显示成陌生人的头像。Overflow 只在协议端自报 `gensokyo` 时调用非标准的 `get_avatar`，因此兼容模式下程序自报该名字，并提供 `/avatar/<标识>` 的代理，代取时附带来源头。
+
 ## 4. 标识映射
 
 | 云湖标识 | OneBot 标识 | 处理方式 |
@@ -161,6 +163,9 @@
 | `POST /group/gag-member` | `gag` 只接受 600、3600、21600、43200，另有 0 解禁与 -1 永久；60、300、599、601、900、1800、7200、86400 返回 `1002 禁言时长错误` | 档位固定，转换层按不小于请求值的最近档位换算，超过 12 小时按 12 小时 |
 | `POST /group/remove-member` | 传 `groupId` 与 `userId` 返回 `{"code":1,"msg":"success"}`，成员被移出群 | 移除成员可用；机器人账号被移出时平台无额外提示 |
 | `GET /bot/messages` | 参数 `chat-id` 与 `chat-type=group` 时返回 `{"list":[],"total":0}`，`chat-type=bot` 被拒绝 | 接口存在但当前账号取不到历史，参数语义待确认，暂不使用 |
+| 客户端取头像的行为 | Overflow 的 `MemberWrapper.kt`、`FriendWrapper.kt`、`StrangerWrapper.kt` 与 `BotWrapper.kt` 里都是 `if (appName != "gensokyo") null else extGetAvatar(…)`，回退时用 mirai 默认的 `https://q1.qlogo.cn/g?b=qq&nk=<整数>&s=<尺寸>` | 头像由客户端自己拼；只有按名字分派的客户端才会向协议端索取地址 |
+| `get_avatar` 的约定 | 参数 `user_id` 必填，取群成员时附带 `group_id`，响应的 `data` 是地址字符串而不是对象 | Gensokyo 的扩展接口，Overflow 用它取群成员、好友、陌生人与机器人自身的头像 |
+| 云湖头像地址 | 形如 `https://chat-img.jwznb.com/8448fe….jpg`，带 `Referer: https://myapp.jwznb.com` 才能取到，缺少时返回 403 | 与媒体 CDN 同一条来源规则，客户端直接下载会失败，因此需要由本程序代理 |
 
 代码同时把 `code` 为 0 与 1 视为成功，避免不同接口编码不一致时误判。`data` 结构已确认的接口有 `/bot/info`、`/bot/send`、`/bot/groups`、`/group/info`、`/group/members` 与三个上传接口；成员字段为 `userId`、`nickname`、`groupNickname` 与 `userLevel`。
 

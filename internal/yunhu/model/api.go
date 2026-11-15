@@ -10,6 +10,8 @@ type BotInfo struct {
 	BotID string `json:"botId"`
 	// Nickname 是机器人昵称。
 	Nickname string `json:"nickname"`
+	// AvatarURL 是机器人头像地址，兼容模式的头像代理会用到。
+	AvatarURL string `json:"avatarUrl"`
 }
 
 // SendMessageRequest 是 POST /bot/send 的请求体。

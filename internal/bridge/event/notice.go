@@ -44,6 +44,7 @@ func (c *Converter) followEvent(envelope model.Envelope) (any, bool, error) {
 	if !exact {
 		c.logger().Warn("关注事件里的用户标识无法解析为整数，已退化为哈希值", "user_id", payload.UserID)
 	}
+	c.Avatars.Put(userID, payload.AvatarURL)
 
 	noticeType := obmodel.NoticeTypeFriendAdd
 	if envelope.Header.EventType == model.EventTypeBotUnfollowed {

@@ -76,7 +76,8 @@ Webhook 的推送地址是 `http://<listen>/yunhu/<token>`，直接把这段填�
 | `send_forward_msg` | 展开为文本后发送 | `部分` | 按参数里的 `group_id`、`user_id` 推断接收方 |
 | `get_login_info` | 启动时 `GET /bot/info` 的结果 | `✓` | 机器人标识与昵称在启动时缓存 |
 | `get_status` | 本地状态 | `✓` | 固定返回在线 |
-| `get_version_info` | 常量 | `✓` | `app_name` 为 `HelloYunhu` |
+| `get_version_info` | 常量 | `✓` | `app_name` 默认为 `HelloYunhu`，开启兼容模式后为 `gensokyo` |
+| `get_avatar` | 头像代理 | `部分` | 非标准接口，只在 `compat.gensokyo.enabled` 为真时提供，参数 `user_id` 与可选的 `group_id`，返回头像地址 |
 | `get_group_info` | `GET /group/info` | `✓` |  |
 | `get_group_list` | `GET /bot/groups` | `✓` | 分页聚合 |
 | `get_group_member_info` | `GET /group/members` | `部分` | 需要机器人开启成员列表权限。失败时返回空对象，避免框架丢弃 @ 消息段 |
@@ -119,6 +120,8 @@ Webhook 的推送地址是 `http://<listen>/yunhu/<token>`，直接把这段填�
 **消息标识需要映射。** 云湖的消息标识是 32 位十六进制字符串，OneBot 侧要求整数，两者依靠一张落库的映射表。映射记录默认保留 168 小时，过期或映射丢失后，引用与撤回会失败并返回 1404 或忽略引用。
 
 **媒体统一转 base64。** 云湖的媒体地址带来源校验，框架直接下载会返回 403，因此由程序下载后以 `base64://` 交给框架。单次读取上限 20 MB，一条十几兆的视频会让单条 WebSocket 消息明显变大。
+
+**头像取决于客户端，默认显示的是 QQ 头像。** OneBot v11 的 `sender` 没有头像字段，程序也不提供头像。框架与插件普遍把整数标识当作 QQ 号去 qlogo 取图，接在云湖上得到的是陌生人的头像。Overflow 这类客户端只在协议端自报 `gensokyo` 时才走非标准的 `get_avatar`，开启 `compat.gensokyo` 之后程序会自报该名字并提供头像代理，客户端显示的是云湖里的真实头像。AstrBot 与 NoneBot2 不调用这个接口，开启后它们的行为不变。
 
 **事件固定以消息段数组发出。** CQ 码只支持发送入口，框架发来的 `message` 是字符串时按 CQ 码解析。事件不会以 CQ 码字符串形式发出。
 

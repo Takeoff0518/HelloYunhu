@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Takeoff0518/HelloYunhu/internal/avatar"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/cache"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/identity"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/media"
@@ -46,6 +47,14 @@ type Dispatcher struct {
 	CanSendImage bool
 	// CanSendRecord 是向框架声明的语音发送能力。云湖只能按文件发送，默认声明为假。
 	CanSendRecord bool
+	// AppName 是向框架自报的程序名，为空时用本项目的名字。
+	//
+	// 兼容模式下由配置改成别的名字，供只认那个名字的客户端启用头像扩展。
+	AppName string
+	// AvatarBaseURL 是头像代理的对外前缀，为空表示不提供 get_avatar。
+	AvatarBaseURL string
+	// Avatars 记录标识与云湖头像地址的对应关系，头像代理据此取图。
+	Avatars *avatar.Store
 	// Logger 为空时丢弃日志。
 	Logger *slog.Logger
 }
@@ -100,7 +109,9 @@ func (d *Dispatcher) Handle(ctx context.Context, name string, params json.RawMes
 	case "set_group_kick":
 		return d.setGroupKick(ctx, params)
 	case "get_version_info":
-		return map[string]any{"app_name": "HelloYunhu", "protocol_version": "v11"}, nil
+		return map[string]any{"app_name": d.appName(), "protocol_version": "v11"}, nil
+	case "get_avatar":
+		return d.getAvatar(params)
 	case ".handle_quick_operation":
 		// aiocqhttp 处理快速操作后会回调这个接口，返回成功即可。
 		return map[string]any{}, nil

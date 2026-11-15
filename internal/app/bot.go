@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Takeoff0518/HelloYunhu/internal/app/metrics"
+	"github.com/Takeoff0518/HelloYunhu/internal/avatar"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/cache"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/dedup"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/event"
@@ -120,6 +121,14 @@ func runBot(ctx context.Context, cfg *config.Config, logger *slog.Logger, messag
 	// 昵称缓存供发送 @ 使用，来源是收到的消息事件。
 	nicknames := cache.NewNicknames(0)
 
+	// 兼容模式开启时才建立头像地址表与代理。对外前缀为空表示不提供 get_avatar，
+	// 两件事由同一个开关决定，避免出现「自报了名字却没有可用地址」的组合。
+	var avatarStore *avatar.Store
+	avatarBase := cfg.AvatarBaseURL()
+	if avatarBase != "" {
+		avatarStore = avatar.NewStore()
+	}
+
 	dispatcher := &action.Dispatcher{
 		SelfID:        selfID,
 		Nickname:      info.Nickname,
@@ -130,6 +139,9 @@ func runBot(ctx context.Context, cfg *config.Config, logger *slog.Logger, messag
 		Nicknames:     nicknames,
 		CanSendImage:  cfg.Capabilities.CanSendImage,
 		CanSendRecord: cfg.Capabilities.CanSendRecord,
+		AppName:       cfg.AppName(),
+		AvatarBaseURL: avatarBase,
+		Avatars:       avatarStore,
 		Logger:        log,
 	}
 
@@ -168,7 +180,13 @@ func runBot(ctx context.Context, cfg *config.Config, logger *slog.Logger, messag
 		Messages:  messages,
 		Media:     mediaLoader,
 		Nicknames: nicknames,
+		Avatars:   avatarStore,
 		Logger:    log,
+	}
+
+	// 机器人自己的头像也记下，客户端会为它单独要一次。
+	if avatarStore != nil {
+		avatarStore.Put(selfID, info.AvatarURL)
 	}
 
 	var subscriber *subscribe.Client
@@ -279,6 +297,12 @@ func runBot(ctx context.Context, cfg *config.Config, logger *slog.Logger, messag
 	if webhookServer != nil {
 		run("Webhook 接收", func() error {
 			return webhookServer.Run(ctx, cfg.Receive.Webhook.Listen)
+		})
+	}
+	if avatarStore != nil {
+		proxy := &avatar.Proxy{Store: avatarStore, Logger: log}
+		run("头像代理", func() error {
+			return proxy.Run(ctx, cfg.Compat.Gensokyo.Listen)
 		})
 	}
 	for _, conn := range connections {

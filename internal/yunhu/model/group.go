@@ -84,6 +84,8 @@ type GroupMember struct {
 	Card string `json:"-"`
 	// Role 是成员角色，取值为 owner、admin 或 member。
 	Role string `json:"-"`
+	// AvatarURL 是成员头像地址，位于云湖的图片 CDN 上。
+	AvatarURL string `json:"-"`
 }
 
 // UnmarshalJSON 解析群成员，同时接受实测字段与几种常见写法。
@@ -98,6 +100,8 @@ func (m *GroupMember) UnmarshalJSON(raw []byte) error {
 		Card      string `json:"card"`
 		UserLevel string `json:"userLevel"`
 		Role      string `json:"role"`
+		AvatarURL string `json:"avatarUrl"`
+		AvatarAlt string `json:"avatar_url"`
 	}
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return err
@@ -107,6 +111,7 @@ func (m *GroupMember) UnmarshalJSON(raw []byte) error {
 	m.Nickname = firstNonEmpty(value.Nickname, value.NickName)
 	m.Card = firstNonEmpty(value.Card, value.GroupName)
 	m.Role = firstNonEmpty(value.Role, value.UserLevel)
+	m.AvatarURL = firstNonEmpty(value.AvatarURL, value.AvatarAlt)
 
 	return nil
 }
