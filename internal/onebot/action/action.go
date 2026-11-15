@@ -42,6 +42,8 @@ type Dispatcher struct {
 	Recent *cache.Messages
 	// Nicknames 记录见过的昵称，发送 @ 时把正文里的标识换成昵称。
 	Nicknames *cache.Nicknames
+	// Origins 记录消息属于哪个会话，撤回时用来补上会话标识与类型。
+	Origins *cache.Origins
 	// Logger 为空时丢弃日志。
 	Logger *slog.Logger
 }
@@ -71,6 +73,12 @@ func (d *Dispatcher) Handle(ctx context.Context, name string, params json.RawMes
 		return d.getMessage(ctx, params)
 	case "get_status":
 		return map[string]any{"online": true, "good": true}, nil
+	case "delete_msg":
+		return d.deleteMessage(ctx, params)
+	case "set_group_ban":
+		return d.setGroupBan(ctx, params)
+	case "set_group_kick":
+		return d.setGroupKick(ctx, params)
 	case "get_version_info":
 		return map[string]any{"app_name": "HelloYunhu", "protocol_version": "v11"}, nil
 	case ".handle_quick_operation", ".handle_quick_operation_async":
@@ -213,6 +221,8 @@ func (d *Dispatcher) send(ctx context.Context, recvType, recvID string, segments
 		if err != nil {
 			return nil, fmt.Errorf("记录发送消息的标识: %w", err)
 		}
+		// 撤回需要会话信息，发出去的消息也记一份。
+		d.Origins.Put(firstMessageID, recvID, recvType)
 	}
 
 	return map[string]any{"message_id": firstMessageID}, nil

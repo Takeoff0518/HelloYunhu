@@ -211,6 +211,13 @@ async def _run(bot: Bot) -> dict:
     await step("发送私聊", lambda: bot.send_private_msg(user_id=user, message="M2 检查：私聊消息"))
     await step("get_status", bot.get_status)
 
+    # 最后撤回第一条文本消息，验证 delete_msg 的整条链路，同时少留一条测试消息。
+    if state.get("first_id"):
+        await step(
+            "撤回消息",
+            lambda: bot.call_api("delete_msg", message_id=state["first_id"]),
+        )
+
     summary = {"group": group, "user": user, "steps": steps}
     _write(summary)
     return summary

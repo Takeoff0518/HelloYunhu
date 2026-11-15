@@ -54,6 +54,8 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 	recent := cache.NewMessages(0)
 	// 昵称缓存供发送 @ 使用，来源是收到的消息事件。
 	nicknames := cache.NewNicknames(0)
+	// 消息归属缓存记录收发的消息属于哪个会话，撤回时需要。
+	origins := cache.NewOrigins(0)
 
 	dispatcher := &action.Dispatcher{
 		SelfID:    selfID,
@@ -63,6 +65,7 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 		Media:     mediaLoader,
 		Recent:    recent,
 		Nicknames: nicknames,
+		Origins:   origins,
 		Logger:    log,
 	}
 
@@ -99,6 +102,7 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 		Messages:  messages,
 		Media:     mediaLoader,
 		Nicknames: nicknames,
+		Origins:   origins,
 		Logger:    log,
 	}
 
