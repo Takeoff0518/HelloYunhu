@@ -4,12 +4,14 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/Takeoff0518/HelloYunhu/internal/app/metrics"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/cache"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/event"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/identity"
@@ -29,10 +31,10 @@ const eventBufferSize = 64
 // runInstance 运行一个机器人实例，直到上下文结束或出错。
 //
 // messages 由上层提供，多个实例共用同一份持久化映射表。
-func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.Config, logger *slog.Logger, messages identity.MessageStore) error {
+func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.Config, logger *slog.Logger, messages identity.MessageStore, counters *metrics.Metrics) error {
 	log := logger.With("instance", instanceCfg.Name)
 
-	apiClient, err := api.New(api.Config{BaseURL: cfg.Yunhu.APIBase, Token: instanceCfg.Token, Logger: log})
+	apiClient, err := api.New(api.Config{BaseURL: cfg.Yunhu.APIBase, Token: instanceCfg.Token, RatePerSecond: cfg.Yunhu.RateLimit, Logger: log})
 	if err != nil {
 		return fmt.Errorf("创建接口客户端: %w", err)
 	}
@@ -76,8 +78,11 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 			AccessToken: instanceCfg.OneBot.AccessToken,
 			SelfID:      selfID,
 		},
-		Handler: dispatcher.Handle,
-		Logger:  log,
+		Handler: func(ctx context.Context, name string, params json.RawMessage) (any, error) {
+			counters.ActionHandled()
+			return dispatcher.Handle(ctx, name, params)
+		},
+		Logger: log,
 		OnConnect: func(ctx context.Context) error {
 			// 连接建立后立即发送生命周期事件，框架据此打印「已连接」。
 			return onebot.SendEvent(event.Lifecycle(selfID, time.Now()))
@@ -136,7 +141,7 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 
 	run("订阅连接", func() error { return subscriber.Run(ctx, events) })
 	run("框架连接", func() error { return onebot.Run(ctx) })
-	run("事件转发", func() error { return forward(ctx, events, converter, onebot, recent, log) })
+	run("事件转发", func() error { return forward(ctx, events, converter, onebot, recent, counters, log) })
 
 	<-ctx.Done()
 	cancel()
@@ -148,13 +153,14 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 // forward 把云湖事件转换后写入框架连接，直到上下文结束。
 //
 // 转换出的消息事件同时放入最近消息缓存，供 get_msg 回放。
-func forward(ctx context.Context, events <-chan model.Envelope, converter *event.Converter, sender *onebotclient.Client, recent *cache.Messages, logger *slog.Logger) error {
+func forward(ctx context.Context, events <-chan model.Envelope, converter *event.Converter, sender *onebotclient.Client, recent *cache.Messages, counters *metrics.Metrics, logger *slog.Logger) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 
 		case envelope := <-events:
+			counters.EventReceived()
 			converted, ok, err := converter.Convert(ctx, envelope)
 			if err != nil {
 				logger.Warn("转换事件失败，已跳过", "event_type", envelope.Header.EventType, "err", err)
