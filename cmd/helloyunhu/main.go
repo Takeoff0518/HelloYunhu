@@ -33,7 +33,9 @@ const (
 	exitUsage = 2
 )
 
-const usageText = `用法: helloyunhu <命令> [参数]
+const usageText = `用法: helloyunhu [命令] [参数]
+
+不带参数时等同于 run，直接加载配置并启动。
 
 命令:
   run       加载配置并启动转换进程
@@ -41,7 +43,8 @@ const usageText = `用法: helloyunhu <命令> [参数]
   selftest  检查运行环境与配置
   help      输出本说明
 
-执行 helloyunhu <命令> -h 查看该命令的参数。
+执行 helloyunhu <命令> -h 查看该命令的参数。首次运行时会生成 config.yaml，
+填写机器人令牌与框架地址后再次运行即可。
 `
 
 // 子命令共用的默认参数值。
@@ -54,8 +57,8 @@ func main() {
 // dispatch 按子命令分发参数，返回进程退出码。
 func dispatch(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprint(stderr, usageText)
-		return exitUsage
+		// 与 go-cqhttp 一类程序的习惯一致：不带参数直接启动。
+		return runServe(nil, stdout, stderr)
 	}
 
 	switch args[0] {
@@ -75,7 +78,9 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 }
 
 // runServe 加载配置并启动转换进程，收到中断信号后退出。
-func runServe(args []string, _, stderr io.Writer) int {
+//
+// 配置文件不存在时先生成模板并提示用户填写，然后退出；第二次运行才真正启动。
+func runServe(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", defaultConfigPath, "配置文件路径")
@@ -89,11 +94,24 @@ func runServe(args []string, _, stderr io.Writer) int {
 		return exitUsage
 	}
 
+	created, err := app.EnsureConfig(*configPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "错误: %v\n", err)
+		return exitError
+	}
+	if created {
+		fmt.Fprintf(stdout, "已生成配置文件 %s，本次不启动。\n", *configPath)
+		fmt.Fprint(stdout, "请填写以下两项后再次运行：\n")
+		fmt.Fprint(stdout, "  instances[0].token        云湖机器人令牌\n")
+		fmt.Fprint(stdout, "  instances[0].onebot.url   机器人框架的 WebSocket 地址\n")
+		return exitOK
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	info := resolveBuildInfo()
-	err := app.Run(ctx, app.Options{
+	err = app.Run(ctx, app.Options{
 		ConfigPath: *configPath,
 		Version:    info.Version,
 		Commit:     info.Commit,

@@ -40,6 +40,24 @@ type Options struct {
 	LogDir string
 }
 
+// EnsureConfig 确保配置文件存在，不存在时生成默认模板。
+//
+// 返回 true 表示本次生成了配置文件，调用方应当提示用户填写后退出；返回 false
+// 表示文件已存在，可以继续加载。这样第一次运行只负责铺好配置，不会带着空令牌
+// 去连接平台。
+func EnsureConfig(path string) (bool, error) {
+	if _, err := os.Stat(path); err == nil {
+		return false, nil
+	} else if !os.IsNotExist(err) {
+		return false, fmt.Errorf("检查配置文件 %s: %w", path, err)
+	}
+
+	if err := config.WriteTemplate(path); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // Run 加载配置、初始化日志并运行各实例，直到上下文结束。
 //
 // 配置有任何一项不合法时直接返回错误，进程由调用方负责退出，不进入运行状态。

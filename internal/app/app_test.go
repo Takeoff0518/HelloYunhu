@@ -67,6 +67,26 @@ func TestOpenLogOutputWritesBoth(t *testing.T) {
 	}
 }
 
+func TestEnsureConfigGeneratesTemplateOnce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+
+	created, err := EnsureConfig(path)
+	if err != nil {
+		t.Fatalf("生成配置失败: %v", err)
+	}
+	if !created {
+		t.Fatal("配置文件不存在时应生成模板")
+	}
+
+	created, err = EnsureConfig(path)
+	if err != nil {
+		t.Fatalf("再次检查失败: %v", err)
+	}
+	if created {
+		t.Error("配置文件已存在时不应重新生成")
+	}
+}
+
 func TestRunMissingConfig(t *testing.T) {
 	var logs bytes.Buffer
 
