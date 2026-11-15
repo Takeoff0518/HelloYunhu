@@ -79,14 +79,23 @@ type APIError struct {
 	Message string
 	// Op 是出错的接口，用于日志与排查。
 	Op string
+	// Body 是响应原文的片段，便于排查字段与错误码不一致的情况。
+	Body string
 }
 
 // Error 实现 error 接口。
 func (e *APIError) Error() string {
+	var text string
 	if e.Message == "" {
-		return fmt.Sprintf("云湖接口 %s 返回错误码 %d", e.Op, e.Code)
+		text = fmt.Sprintf("云湖接口 %s 返回错误码 %d", e.Op, e.Code)
+	} else {
+		text = fmt.Sprintf("云湖接口 %s 返回错误码 %d: %s", e.Op, e.Code, e.Message)
 	}
-	return fmt.Sprintf("云湖接口 %s 返回错误码 %d: %s", e.Op, e.Code, e.Message)
+
+	if e.Body == "" {
+		return text
+	}
+	return text + "（原始响应: " + e.Body + "）"
 }
 
 // 错误码常量。
@@ -238,10 +247,10 @@ func (c *Client) execute(request *http.Request, op string) (json.RawMessage, err
 
 	var parsed envelope
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, fmt.Errorf("云湖接口 %s 的响应不是合法 JSON: %w", op, err)
+		return nil, fmt.Errorf("云湖接口 %s 的响应不是合法 JSON: %w（原始响应: %s）", op, err, excerpt(raw))
 	}
 	if parsed.Code != 0 {
-		return nil, &APIError{Code: parsed.Code, Message: parsed.message(), Op: op}
+		return nil, &APIError{Code: parsed.Code, Message: parsed.message(), Op: op, Body: excerpt(raw)}
 	}
 
 	return parsed.Data, nil

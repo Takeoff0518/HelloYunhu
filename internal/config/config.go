@@ -49,6 +49,10 @@ type Log struct {
 	Level string `yaml:"level"`
 	// Format 是输出格式，可选 text 与 json。
 	Format string `yaml:"format"`
+	// RawEvents 为真时在 debug 级别输出订阅收到的原始事件。
+	//
+	// 只用于排查协议问题：原始事件包含消息正文与昵称，不属于常规日志内容。
+	RawEvents bool `yaml:"raw_events"`
 }
 
 // Storage 是持久化设置。

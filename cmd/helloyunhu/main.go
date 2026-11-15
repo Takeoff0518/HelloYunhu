@@ -17,7 +17,6 @@ import (
 	"syscall"
 
 	"github.com/Takeoff0518/HelloYunhu/internal/app"
-	"github.com/Takeoff0518/HelloYunhu/internal/config"
 )
 
 // 版本信息在构建时通过链接参数写入，未注入时保留下面的默认值。
@@ -150,24 +149,30 @@ func runSelftest(args []string, stdout, stderr io.Writer) int {
 
 	info := resolveBuildInfo()
 	fmt.Fprintf(stdout, "helloyunhu %s（提交 %s）\n", info.Version, info.Commit)
-	fmt.Fprintf(stdout, "Go: %s %s/%s\n", runtime.Version(), runtime.GOOS, runtime.GOARCH)
+	fmt.Fprintf(stdout, "Go: %s %s/%s\n\n", runtime.Version(), runtime.GOOS, runtime.GOARCH)
 
-	cfg, err := config.Load(*configPath)
-	if err != nil {
-		fmt.Fprintf(stdout, "[失败] 配置检查: %v\n", err)
-		fmt.Fprintln(stdout, "自检未通过")
+	results := app.Selftest(context.Background(), app.Options{
+		ConfigPath: *configPath,
+		Version:    info.Version,
+		Commit:     info.Commit,
+	})
+
+	counts := make(map[string]int, 3)
+	for _, result := range results {
+		counts[result.Status]++
+		fmt.Fprintf(stdout, "[%s] %s: %s\n", result.Status, result.Name, result.Detail)
+	}
+
+	fmt.Fprintf(stdout, "\n自检结束：%d 项通过，%d 项失败，%d 项跳过\n",
+		counts[app.StatusPassed], counts[app.StatusFailed], counts[app.StatusSkipped])
+
+	if counts[app.StatusFailed] > 0 {
 		return exitError
 	}
-
-	fmt.Fprintf(stdout, "[通过] 配置检查: %s，共 %d 个实例\n", *configPath, len(cfg.Instances))
-	for _, instance := range cfg.Instances {
-		fmt.Fprintf(stdout, "       实例 %s 连接 %s\n", instance.Name, instance.OneBot.URL)
+	if counts[app.StatusSkipped] > 0 {
+		fmt.Fprintln(stdout, "跳过的项没有得到验证")
 	}
 
-	fmt.Fprintln(stdout, "[跳过] 云湖接口连通性：等待 M1 实现")
-	fmt.Fprintln(stdout, "[跳过] 事件订阅连接：等待 M1 实现")
-	fmt.Fprintln(stdout, "[跳过] 框架握手：等待 M1 实现")
-	fmt.Fprintln(stdout, "自检结束，跳过的项目没有得到验证")
 	return exitOK
 }
 

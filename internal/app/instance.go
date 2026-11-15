@@ -82,8 +82,9 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 	}
 
 	subscriber, err := subscribe.New(subscribe.Options{
-		Config: subscribe.Config{URL: cfg.Yunhu.SubscribeURL, Token: instanceCfg.Token},
-		Logger: log,
+		Config:    subscribe.Config{URL: cfg.Yunhu.SubscribeURL, Token: instanceCfg.Token},
+		Logger:    log,
+		RawEvents: cfg.Log.RawEvents,
 	})
 	if err != nil {
 		return fmt.Errorf("创建订阅客户端: %w", err)
