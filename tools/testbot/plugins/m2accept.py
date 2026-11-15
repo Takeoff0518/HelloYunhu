@@ -22,6 +22,7 @@ from pathlib import Path
 
 from nonebot import get_driver, logger, on_command
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
+from nonebot.params import CommandArg
 
 # 素材与结果放在测试机器人目录下，已加入忽略列表。
 BASE = Path(__file__).resolve().parent.parent
@@ -246,7 +247,13 @@ m2check = on_command("m2check", priority=5, block=True)
 
 
 @m2check.handle()
-async def _(bot: Bot) -> None:
+async def _(bot: Bot, args: Message = CommandArg()) -> None:
+    # 也可以把群号与用户号直接写在命令后面，省去改 .env 再重启。
+    parts = args.extract_plain_text().split()
+    if len(parts) >= 2:
+        os.environ["M2_CHECK_GROUP"] = parts[0]
+        os.environ["M2_CHECK_USER"] = parts[1]
+
     await m2check.send("M2 检查开始，结果写入 .m2check/result.json")
     await _guarded(bot)
 
