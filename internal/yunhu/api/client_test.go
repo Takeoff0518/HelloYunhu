@@ -92,6 +92,39 @@ func TestBotInfo(t *testing.T) {
 	}
 }
 
+func TestBotInfoSuccessCodeOne(t *testing.T) {
+	// 云湖在成功时返回 code 1，实测于真实接口。
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"code":1,"msg":"success","data":{"botId":"11464576","nickname":"乐正绫TwinkLing"}}`)
+	})
+
+	info, err := client.BotInfo(context.Background())
+	if err != nil {
+		t.Fatalf("BotInfo 返回错误: %v", err)
+	}
+	if info.BotID != "11464576" || info.Nickname != "乐正绫TwinkLing" {
+		t.Errorf("机器人信息为 %+v", info)
+	}
+}
+
+func TestSuccessCodes(t *testing.T) {
+	tests := []struct {
+		code int
+		want bool
+	}{
+		{code: 0, want: true},
+		{code: 1, want: true},
+		{code: 1003, want: false},
+		{code: 1007, want: false},
+	}
+
+	for _, tt := range tests {
+		if got := isSuccessCode(tt.code); got != tt.want {
+			t.Errorf("isSuccessCode(%d) = %v，期望 %v", tt.code, got, tt.want)
+		}
+	}
+}
+
 func TestBotInfoMissingBotID(t *testing.T) {
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"code":0,"data":{"nickname":"没有标识"}}`)
