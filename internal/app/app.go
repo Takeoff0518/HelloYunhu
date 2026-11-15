@@ -104,8 +104,6 @@ func Run(ctx context.Context, opt Options) error {
 		}
 	}()
 
-	go pruneLoop(ctx, store, cfg.Storage.MessageTTL.Standard(), logger)
-
 	// 运行计数供只读诊断接口使用，所有实例共用。
 	counters := metrics.New()
 	startedAt := time.Now()
@@ -115,6 +113,13 @@ func Run(ctx context.Context, opt Options) error {
 		errOnce sync.Once
 		runErr  error
 	)
+
+	// 清理协程也加入等待组：它会在退出时打印日志，必须先把日志写完再关闭输出。
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		pruneLoop(ctx, store, cfg.Storage.MessageTTL.Standard(), logger)
+	}()
 
 	if cfg.Diagnostics.Enabled {
 		server := diagnostics.New(diagnostics.Options{
@@ -183,6 +188,11 @@ func pruneLoop(ctx context.Context, store *storage.Store, ttl time.Duration, log
 	prune := func() {
 		removed, err := store.Prune(ctx, ttl)
 		if err != nil {
+			// 退出过程中数据库可能已经关闭，这时候再记日志没有意义，
+			// 而且会把日志写到正在关闭的输出上。
+			if ctx.Err() != nil {
+				return
+			}
 			logger.Warn("清理过期的消息标识失败", "err", err)
 			return
 		}
