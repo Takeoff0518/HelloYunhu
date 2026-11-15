@@ -35,6 +35,17 @@ const (
 const (
 	PostTypeMessage   = "message"
 	PostTypeMetaEvent = "meta_event"
+	PostTypeNotice    = "notice"
+)
+
+// 通知类型。好友相关的两个类型不属于 OneBot 标准，取值与调研报告 6.1 节一致。
+const (
+	NoticeTypeFriendAdd     = "friend_add"
+	NoticeTypeFriendRemove  = "yunhu_friend_remove"
+	NoticeTypeGroupIncrease = "group_increase"
+	NoticeTypeGroupDecrease = "group_decrease"
+	SubTypeApprove          = "approve"
+	SubTypeLeave            = "leave"
 )
 
 // 消息类型。
@@ -183,6 +194,32 @@ type YunhuExtension struct {
 	//
 	// 指令名已经拼进正文，便于框架按正文匹配命令；这个字段留给需要精确判断的插件。
 	Instruction string `json:"instruction,omitempty"`
+}
+
+// NoticeExtension 是附加在通知事件上的云湖原始信息。
+//
+// 通知事件没有消息标识，只保留事件标识与原始字符串标识，便于插件与排查使用。
+type NoticeExtension struct {
+	EventID  string `json:"event_id,omitempty"`
+	UserID   string `json:"user_id,omitempty"`
+	GroupID  string `json:"group_id,omitempty"`
+	Nickname string `json:"nickname,omitempty"`
+}
+
+// NoticeEvent 是通知类事件，覆盖好友关注、取关与群成员增减。
+//
+// OneBot 的通知事件字段比较松散，这里把所有可能出现的字段都声明出来，空字段
+// 用 omitempty 省略；框架按 post_type 与 notice_type 分派，不会因为多余字段报错。
+type NoticeEvent struct {
+	PostType   string           `json:"post_type"`
+	NoticeType string           `json:"notice_type"`
+	SubType    string           `json:"sub_type,omitempty"`
+	Time       int64            `json:"time"`
+	SelfID     int64            `json:"self_id"`
+	UserID     int64            `json:"user_id"`
+	GroupID    int64            `json:"group_id,omitempty"`
+	OperatorID int64            `json:"operator_id,omitempty"`
+	Yunhu      *NoticeExtension `json:"yunhu,omitempty"`
 }
 
 // MessageEvent 是消息事件。

@@ -120,6 +120,87 @@ type TextContent struct {
 // ErrUnsupportedContent 表示消息的内容类型还没有实现转换。
 var ErrUnsupportedContent = errors.New("暂不支持的消息内容类型")
 
+// FollowEvent 是 bot.followed 与 bot.unfollowed 的负载。
+//
+// 字段名以官方文档为准，同时接受下划线与 senderId 这类变体。这两个事件还没有在
+// 真实环境抓到过，解析保持宽松，接不到用户标识时按跳过处理。
+type FollowEvent struct {
+	UserID    string
+	Nickname  string
+	AvatarURL string
+	Time      int64
+}
+
+// UnmarshalJSON 解析关注与取关事件，兼容多种字段名。
+func (e *FollowEvent) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		UserID    string `json:"userId"`
+		UserIDAlt string `json:"user_id"`
+		SenderID  string `json:"senderId"`
+		Nickname  string `json:"nickname"`
+		AvatarURL string `json:"avatarUrl"`
+		AvatarAlt string `json:"avatar_url"`
+		Time      int64  `json:"time"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	e.UserID = firstNonEmpty(raw.UserID, raw.UserIDAlt, raw.SenderID)
+	e.Nickname = raw.Nickname
+	e.AvatarURL = firstNonEmpty(raw.AvatarURL, raw.AvatarAlt)
+	e.Time = NormalizeTime(raw.Time)
+
+	return nil
+}
+
+// GroupNoticeEvent 是 group.join 与 group.leave 的负载。
+//
+// 群标识在文档里叫 chatId，用户标识是 userId；同时接受 groupId、senderId 这类变体。
+type GroupNoticeEvent struct {
+	GroupID  string
+	UserID   string
+	Nickname string
+	Time     int64
+}
+
+// UnmarshalJSON 解析入群与退群事件，兼容多种字段名。
+func (e *GroupNoticeEvent) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		ChatID   string `json:"chatId"`
+		GroupID  string `json:"groupId"`
+		GroupAlt string `json:"group_id"`
+		UserID   string `json:"userId"`
+		UserAlt  string `json:"user_id"`
+		SenderID string `json:"senderId"`
+		Nickname string `json:"nickname"`
+		Time     int64  `json:"time"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	e.GroupID = firstNonEmpty(raw.ChatID, raw.GroupID, raw.GroupAlt)
+	e.UserID = firstNonEmpty(raw.UserID, raw.UserAlt, raw.SenderID)
+	e.Nickname = raw.Nickname
+	e.Time = NormalizeTime(raw.Time)
+
+	return nil
+}
+
+// NormalizeTime 把毫秒时间戳换算成秒。
+//
+// 文档没有写清通知事件的时间单位，消息事件里用的是毫秒，这里按数量级判断：
+// 超过一万亿的解释为毫秒，否则当作秒。
+func NormalizeTime(value int64) int64 {
+	if value > 1_000_000_000_000 {
+		return value / 1000
+	}
+	return value
+}
+
+// firstNonEmpty 返回第一个非空字符串，实现在 group.go。
+
 // TextContent 解析文本内容。内容类型不是 text 时返回 ErrUnsupportedContent。
 func (m *Message) TextContent() (*TextContent, error) {
 	if m.ContentType != ContentTypeText {

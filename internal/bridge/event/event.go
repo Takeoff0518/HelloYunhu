@@ -51,9 +51,7 @@ func (c *Converter) Convert(ctx context.Context, envelope model.Envelope) (any, 
 		return c.messageEvent(ctx, envelope)
 	case model.EventTypeBotFollowed, model.EventTypeBotUnfollowed,
 		model.EventTypeGroupJoin, model.EventTypeGroupLeave:
-		// 通知类事件在 M3 接入，先明确记录，避免看起来像丢弃。
-		c.logger().Info("通知类事件尚未实现，已跳过", "event_type", envelope.Header.EventType)
-		return nil, false, nil
+		return c.noticeEvent(envelope)
 	default:
 		c.logger().Debug("未知事件类型，已跳过", "event_type", envelope.Header.EventType)
 		return nil, false, nil
