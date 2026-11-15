@@ -67,22 +67,29 @@ helloyunhu run -config config.yaml
 
 启动后日志里应当依次出现：程序启动、装载机器人实例、已连接机器人框架、已连接云湖事件订阅。
 
-## 4. 用 NoneBot2 做回声测试
+## 4. 启动测试机器人
 
-NoneBot2 加一个最小插件就足以验证协议。插件把收到的消息原样回显，便于确认文本、@ 与图片的解析结果。
+仓库自带一个基于 NoneBot2 的测试机器人，放在 `tools/testbot/`。它提供两个插件：`echo` 把收到的消息回显，`diagnostics` 在收到 `/diag` 时回复事件的关键字段。后续新增测试场景时在它的 `plugins/` 目录下扩展。
 
-```python
-from nonebot import on_message
-from nonebot.adapters.onebot.v11 import Bot, MessageEvent
+首次运行会自动创建虚拟环境、安装依赖并生成 `.env`：
 
-echo = on_message(priority=10, block=False)
-
-@echo.handle()
-async def _(bot: Bot, event: MessageEvent):
-    await bot.send(event, f"收到：{event.get_plaintext()}")
+```powershell
+cd tools\testbot
+.\run.ps1
 ```
 
-反向 WebSocket 的地址以 NoneBot2 启动日志打印的路径为准，填进配置里的 `onebot.url`。框架的访问令牌两侧都留空时不需要额外配置。
+也可以手动执行：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env
+.\.venv\Scripts\python.exe bot.py
+```
+
+启动后它监听 `127.0.0.1:8080`，反向 WebSocket 端点是 `ws://127.0.0.1:8080/onebot/v11/ws`，与 `config.yaml` 里的 `onebot.url` 保持一致。框架侧配置见 `tools/testbot/.env.example`，可以修改端口。
+
+框架的访问令牌两侧都留空时不需要额外配置。
 
 ## 5. 测试清单
 
@@ -95,6 +102,9 @@ async def _(bot: Bot, event: MessageEvent):
 | 文件 | 发一个文件 | 框架收到 `file` 段并带地址与文件名 |
 | 私聊 | 在私聊里发一句话 | 框架收到 `message.private`，回复可达 |
 | 自身消息 | 机器人自己发言 | 框架不应收到机器人自己的消息 |
+| 诊断命令 | 群里或私聊发 `/diag` | 回复 `self_id`、`message_id`、`group_id` 与消息段类型 |
+
+`/diag` 用于确认映射结果：群里 @ 机器人时 `segments` 应包含 `at`，发图片时应包含 `image`，`message_id` 应当是可转换为整数的值。
 
 撤回、禁言、踢人与关注、入群、退群等通知事件尚未实现，测试时不出现反应属于预期行为。
 

@@ -14,7 +14,8 @@
 
 ## 使用文档
 
-- [测试指南](guides/testing.md)：配置、自检、启动顺序、用 NoneBot2 跑第一轮测试与采集现场信息。
+- [测试指南](guides/testing.md)：配置、自检、启动顺序、用测试机器人跑第一轮测试与采集现场信息。
+- [测试机器人](../tools/testbot/README.md)：基于 NoneBot2 的测试框架，提供回声与诊断命令，不参与主程序构建。
 - 快速开始（`guides/quickstart.md`）：安装、配置与首次接入，M4 阶段编写。
 - 配置说明（`guides/configuration.md`）：全部配置项，M4 阶段编写。
 - 常见问题（`guides/troubleshooting.md`）：排查方法，M4 阶段编写。
