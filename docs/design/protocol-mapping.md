@@ -38,7 +38,7 @@
 
 | OneBot 接口 | 云湖实现 | 状态 |
 |---|---|---|
-| `send_group_msg` | `POST /bot/send`，`recvType=group` | 已实现，支持文本、@、引用与图片 |
+| `send_group_msg` | `POST /bot/send`，`recvType=group` | 已实现，支持文本、@、引用、图片、文件与视频 |
 | `send_private_msg` | `POST /bot/send`，`recvType=user` | 已实现 |
 | `send_msg` | 按 `message_type` 决定接收方类型 | 已实现 |
 | `get_login_info` | 启动时查询的 `/bot/info` 结果 | 已实现 |
@@ -46,8 +46,8 @@
 | `get_version_info` | 常量，`app_name` 为 HelloYunhu | 已实现 |
 | `get_group_info` | `GET /group/info` | 已实现 |
 | `get_group_list` | `GET /bot/groups` 分页聚合 | 已实现 |
-| `get_group_member_info` | `GET /group/members` 扫描，失败返回空数据 | 已实现 |
-| `get_group_member_list` | `GET /group/members` 分页聚合 | 已实现 |
+| `get_group_member_info` | `GET /group/members` 扫描，失败返回空数据 | 已实现，受权限限制 |
+| `get_group_member_list` | `GET /group/members` 分页聚合，失败返回空列表 | 已实现，受权限限制 |
 | `get_stranger_info` | 云湖无对应接口，返回空昵称 | 已实现 |
 | `get_msg` | 从最近消息缓存回放，未命中返回 1404 | 已实现 |
 | `.handle_quick_operation` | 直接返回成功 | 已实现 |
@@ -91,6 +91,8 @@
 
 发送接口的 `message` 参数同时接受消息段数组与 CQ 码字符串，字符串按 CQ 码解析后再走同一套拆分逻辑。事件方向固定使用消息段数组，框架侧不需要额外配置。
 
+部分框架会把单个消息段直接当作 `message` 传入，这种形态按一段处理。媒体的本地路径可能是 `file:///E:/…` 这种三斜杠写法，读取前会按盘符去掉多余的前导斜杠。
+
 ## 4. 标识映射
 
 | 云湖标识 | OneBot 标识 | 处理方式 |
@@ -117,8 +119,17 @@
 | 群聊图片消息 | `content` 含 `imageUrl`、`imageName`、`etag`、`imageWidth`、`imageHeight` | 图片内容字段可用，`imageKey` 只在上传后的场景出现 |
 | `message.receive.instruction` 事件 | `instructionName` 与 `commandName` 均为 `/quote`，正文 `text` 只有参数 `test` | 指令名不在正文里，需拼回正文才能让框架匹配命令 |
 | `POST /bot/send` 成功 | `{"messageInfo":{"msgId":"…","recvId":"…","recvType":"…"}}` | 消息标识在 `messageInfo.msgId`，不在顶层 |
+| `GET /bot/groups` | `{"list":[{"groupId":"…","name":"…","avatarUrl":"…"}]}` | 列表包在 `list` 里；群名是 `name` 不是 `groupName`；不返回成员数量 |
+| `GET /group/info` | `{"groupId":"…","name":"…","headcount":31,"introduction":"…","avatarUrl":"…"}` | 成员数量是 `headcount`，没有成员上限字段 |
+| `GET /group/members`，未授权 | `{"code":1003,"msg":"机器人无获取群成员列表权限，请联系群主或管理员授权"}` | 成员接口默认关闭，需要在机器人后台授权；未授权时返回空列表而不是报错 |
+| `POST /image/upload` | `{"imageKey":"FplutsXGo96FnEEdy0pIxjIu7_Ko"}` | 图片上传返回 `imageKey` |
+| `POST /file/upload` | `{"fileKey":"FvMpoya0gU76yX9mQY8_l7f6k2qs"}` | 文件上传返回 `fileKey` |
+| `POST /video/upload` | `{"videoKey":"Fg61uTCfVc3ldhMtd3Iy-nYwUaAj"}` | 视频上传返回 `videoKey` |
+| 发送图文混排 | 一条三段的消息被拆成三条 `POST /bot/send`，依次为文本、图片、文本 | 拆分与顺序符合设计，云湖侧显示为三条消息 |
+| 发送私聊 | `recvType` 为 `user`，`recvId` 为用户标识，返回 `messageInfo` | 私聊发送可用 |
+| 重启后引用 | 进程重启后仍能把整数标识 `31` 反查为 `parentId=c941fdc2…` | 标识映射落盘有效，引用不因重启失效 |
 
-代码同时把 `code` 为 0 与 1 视为成功，避免不同接口编码不一致时误判。成功响应的 `data` 结构只对 `/bot/info` 与 `/bot/send` 确认过，其余接口仍按常见写法解析。
+代码同时把 `code` 为 0 与 1 视为成功，避免不同接口编码不一致时误判。`data` 结构已确认的接口有 `/bot/info`、`/bot/send`、`/bot/groups`、`/group/info` 与三个上传接口；`/group/members` 的字段名仍未确认，因为当前机器人没有该权限。
 
 媒体下载另有两条实测结论：
 
@@ -129,11 +140,9 @@
 
 ## 6. 尚未确认的行为
 
-下面几项依赖真实云湖环境验证，代码对多种写法都做了兼容，实测后需要回来收敛：
+下面几项依赖真实云湖环境继续验证，代码对多种写法都做了兼容，实测后需要回来收敛：
 
-1. 除 `/bot/info` 与 `/bot/send` 之外各接口成功响应的 `data` 结构与字段名。
-2. 群列表与群成员列表的包装字段，当前接受直接数组与 `list`、`items`、`members`、`groups`、`data`。
-3. 群成员列表的字段名与角色取值，消息事件里的角色已确认为 `owner` 这类字符串。
-4. 发送消息时 `parentId` 是否被平台采纳为引用关系，请求已带上该字段，效果待验证。
-5. 文件与视频发送所需的字段组合，当前按 `fileKey` 加文件名与体积、`videoKey` 组织。
-6. 撤回、编辑与禁言接口的请求参数与返回结构。
+1. `/group/members` 的字段名与角色取值。接口本身需要机器人在群后台获得成员列表权限，当前测试机器人没有授权，只确认了未授权时的错误码与降级行为。
+2. 图片、文件与视频发送后云湖客户端的实际呈现，包括 @ 在正文中的显示形式与文件是否可直接打开。接口层已确认返回 `messageInfo`。
+3. 接收方向的私聊、@ 唤醒、文件与视频事件，需要真人账号发消息才能触发。
+4. 撤回、编辑与禁言接口的请求参数与返回结构，属于 M3。

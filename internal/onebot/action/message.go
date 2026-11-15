@@ -46,8 +46,9 @@ func (d *Dispatcher) getMessage(_ context.Context, params json.RawMessage) (any,
 
 // parseSendMessage 解析发送接口的 message 参数。
 //
-// 框架可能给出消息段数组，也可能给出 CQ 码字符串，两种形态都接受。解析失败时
-// 返回错误，由调用方如实回给框架。
+// 框架可能给出消息段数组，也可能给出 CQ 码字符串，两种形态都接受。个别框架会把
+// 单个消息段直接当作 message 传过来，这种形态也按一段处理。解析失败时返回错误，
+// 由调用方如实回给框架。
 func parseSendMessage(raw json.RawMessage) (obmodel.InMessage, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil, errors.New("缺少 message")
@@ -58,9 +59,15 @@ func parseSendMessage(raw json.RawMessage) (obmodel.InMessage, error) {
 		return segments, nil
 	}
 
+	// 单个消息段的对象形态。
+	var single obmodel.InSegment
+	if err := json.Unmarshal(raw, &single); err == nil && single.Type != "" {
+		return obmodel.InMessage{single}, nil
+	}
+
 	var text string
 	if err := json.Unmarshal(raw, &text); err != nil {
-		return nil, errors.New("message 既不是消息段数组，也不是字符串")
+		return nil, errors.New("message 既不是消息段数组、字符串，也不是单个消息段")
 	}
 
 	return fromCQCode(text), nil

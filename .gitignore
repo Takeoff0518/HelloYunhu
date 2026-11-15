@@ -24,6 +24,8 @@ config.local.yaml
 /tools/testbot/.env
 /tools/testbot/data/
 /tools/testbot/.nonebot/
+# 验收脚本运行时生成的素材与结果
+/tools/testbot/.m2check/
 __pycache__/
 *.pyc
 

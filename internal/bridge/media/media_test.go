@@ -143,3 +143,41 @@ func TestLoadEmptySource(t *testing.T) {
 		t.Fatal("空来源应返回错误")
 	}
 }
+
+func TestLocalPath(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{name: "框架给出的三斜杠写法", source: "/E:/work/image.png", want: "E:/work/image.png"},
+		{name: "小写盘符", source: "/c:/temp/a.txt", want: "c:/temp/a.txt"},
+		{name: "没有盘符时保持不变", source: "/var/tmp/a.txt", want: "/var/tmp/a.txt"},
+		{name: "本身就是本机路径", source: "E:/work/image.png", want: "E:/work/image.png"},
+		{name: "短路径不变", source: "/a", want: "/a"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := localPath(tt.source); got != tt.want {
+				t.Errorf("结果为 %q，期望 %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadFileURL(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sample.txt")
+	if err := os.WriteFile(path, []byte("file url"), 0o600); err != nil {
+		t.Fatalf("写入临时文件失败: %v", err)
+	}
+
+	// 框架常用 file:/// 加绝对路径的形式，斜杠统一转成正斜杠。
+	source := "file:///" + strings.TrimPrefix(strings.ReplaceAll(path, "\\", "/"), "/")
+	if _, data, err := (Loader{}).Load(context.Background(), source); err != nil {
+		t.Fatalf("读取失败: %v", err)
+	} else if string(data) != "file url" {
+		t.Errorf("内容为 %q", data)
+	}
+}

@@ -63,7 +63,7 @@ func (l Loader) Load(ctx context.Context, source string) (string, []byte, error)
 		return "upload.bin", data, nil
 
 	case strings.HasPrefix(source, filePrefix):
-		return l.readFile(strings.TrimPrefix(source, filePrefix))
+		return l.readFile(localPath(strings.TrimPrefix(source, filePrefix)))
 
 	case strings.HasPrefix(source, "http://"), strings.HasPrefix(source, "https://"):
 		return l.download(ctx, source)
@@ -91,6 +91,21 @@ func (l Loader) decodeBase64(source string) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+// localPath 把 file:// 后面的部分转换为本机路径。
+//
+// 框架常用 file:/// 加绝对路径的形式，例如 NoneBot2 给出的
+// file:///E:/work/image.png。前三斜杠去掉之后剩下 /E:/work/image.png，在 Windows
+// 上多了一个前导斜杠，读取会失败，这里按盘符判断并去掉它。
+func localPath(raw string) string {
+	if len(raw) >= 3 && raw[0] == '/' && raw[2] == ':' {
+		letter := raw[1]
+		if (letter >= 'a' && letter <= 'z') || (letter >= 'A' && letter <= 'Z') {
+			return raw[1:]
+		}
+	}
+	return raw
 }
 
 // readFile 读取本地文件。
