@@ -536,3 +536,19 @@ func TestMetaActions(t *testing.T) {
 		t.Fatalf("快速操作应当返回成功: %v", err)
 	}
 }
+
+func TestSendSingleSegmentMessage(t *testing.T) {
+	dispatcher, recorder := newDispatcher(t)
+
+	// 个别框架会把单个消息段直接当作 message 传入。
+	params := json.RawMessage(`{"group_id":20001,"message":{"type":"text","data":{"text":"单段"}}}`)
+	if _, err := dispatcher.Handle(context.Background(), "send_group_msg", params); err != nil {
+		t.Fatalf("发送失败: %v", err)
+	}
+
+	request := recorder.last(t)
+	content := request.Content.(map[string]any)
+	if text, _ := content["text"].(string); text != "单段" {
+		t.Errorf("正文为 %q", content["text"])
+	}
+}
