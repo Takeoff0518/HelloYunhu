@@ -105,7 +105,7 @@ func (c *Converter) messageEvent(ctx context.Context, envelope model.Envelope) (
 		Sender: obmodel.Sender{
 			UserID:   userID,
 			Nickname: payload.Sender.SenderNickname,
-			Role:     "member",
+			Role:     role(payload.Sender.SenderUserLevel),
 		},
 		Yunhu: &obmodel.YunhuExtension{
 			MsgID:    payload.Message.MsgID,
@@ -205,6 +205,19 @@ func (c *Converter) imageSegments(ctx context.Context, payload *model.Message) (
 	name := content.ImageName
 	segment := message.IncomingImage(content.ImageURL, content.ImageURL, name)
 	return obmodel.OutMessage{segment}, message.PlaceholderImage
+}
+
+// role 把云湖的成员角色转换为 OneBot 的角色取值。
+//
+// 实测 senderUserLevel 取 owner 这类字符串；未知值时按普通成员处理，避免把不认识
+// 的角色写成空值。
+func role(level string) string {
+	switch level {
+	case "owner", "admin", "member":
+		return level
+	default:
+		return "member"
+	}
 }
 
 // logger 返回可用的日志实例。

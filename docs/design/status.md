@@ -57,6 +57,8 @@ M2 消息与身份的代码已完成并合并到 `main`：CQ 码编解码、SQLi
 
 用真实令牌跑自检时发现成功响应的 `code` 为 1，`msg` 为 `success`，`data` 含 `botId`、`nickname` 等字段，订阅连接握手成功。代码原先只把 0 当成功，已改为同时接受 0 与 1。
 
+第一次收发测试时事件全部被跳过，原因是 `sender.senderUserLevel` 实测是 `"owner"` 这类字符串，而结构体声明为整数；同一份事件还显示 `instructionId` 与 `commandId` 位于 `message` 内且为数字。两处类型已修正，并新增按真实事件构造的回归测试。群聊文本与图片的事件结构也与预期一致。
+
 ### M2 消息与身份（基本完成）
 
 - `internal/bridge/cqcode`：CQ 码与消息段数组的相互转换，含转义与还原，未闭合的片段按文本处理。

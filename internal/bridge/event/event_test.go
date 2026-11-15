@@ -23,7 +23,7 @@ const groupMessage = `{
   "version": "1.0",
   "header": {"eventId": "evt-1", "eventTime": 1761936492340, "eventType": "message.receive.normal"},
   "event": {
-    "sender": {"senderId": "10001", "senderNickname": "小明", "senderUserLevel": 1, "senderAvatarUrl": "https://cdn.example.com/a.png"},
+    "sender": {"senderId": "10001", "senderNickname": "小明", "senderUserLevel": "owner", "senderAvatarUrl": "https://cdn.example.com/a.png"},
     "chat": {"chatId": "20001", "chatType": "group"},
     "message": {
       "msgId": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
@@ -85,6 +85,58 @@ func parse(t *testing.T, raw string) model.Envelope {
 		t.Fatalf("解析事件失败: %v", err)
 	}
 	return envelope
+}
+
+// realTextMessage 是真实服务端推送的群聊文本事件，用于锁定字段类型。
+//
+// 两个容易看错的地方：senderUserLevel 是 "owner" 这类字符串，不是等级数字；
+// instructionId 与 commandId 位于 message 内，且是数字。
+const realTextMessage = `{
+  "version": "1.0",
+  "header": {"eventId": "evt-real", "eventTime": 1794708523781, "eventType": "message.receive.normal"},
+  "event": {
+    "sender": {"senderId": "2272345", "senderType": "user", "senderUserLevel": "owner", "senderNickname": "洛雨辰", "senderAvatarUrl": "https://cdn.example.com/a.webp"},
+    "chat": {"chatId": "695367192", "chatType": "group"},
+    "message": {
+      "msgId": "def103e3220742d79a3f6dd6ddb98309",
+      "parentId": "",
+      "sendTime": 1794708523770,
+      "chatId": "695367192",
+      "chatType": "group",
+      "contentType": "text",
+      "content": {"text": "12345"},
+      "instructionId": 0,
+      "instructionName": "",
+      "commandId": 0,
+      "commandName": ""
+    }
+  }
+}`
+
+func TestConvertRealTextMessage(t *testing.T) {
+	converter := newConverter()
+
+	got, ok, err := converter.Convert(context.Background(), parse(t, realTextMessage))
+	if err != nil {
+		t.Fatalf("真实事件解析失败: %v", err)
+	}
+	if !ok {
+		t.Fatal("真实事件应当发送给框架")
+	}
+
+	event := got.(*obmodel.MessageEvent)
+	if event.GroupID != 695367192 || event.UserID != 2272345 {
+		t.Errorf("标识为 %d/%d", event.GroupID, event.UserID)
+	}
+	if event.Sender.Role != "owner" {
+		t.Errorf("角色为 %q，期望 owner", event.Sender.Role)
+	}
+	if event.RawMessage != "12345" {
+		t.Errorf("原始消息为 %q", event.RawMessage)
+	}
+	if len(event.Message) != 1 || event.Message[0].Type != "text" {
+		t.Errorf("消息段为 %+v", event.Message)
+	}
 }
 
 func TestConvertGroupMessage(t *testing.T) {
