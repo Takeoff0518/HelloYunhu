@@ -179,7 +179,8 @@ func (c *Converter) segments(ctx context.Context, payload *model.Message, comman
 			c.logger().Warn("解析文件内容失败，已降级为占位文本", "msg_id", payload.MsgID, "err", err)
 			return message.IncomingPlaceholder(payload.ContentType), ""
 		}
-		return obmodel.OutMessage{message.IncomingFile(content.FileURL, content.FileURL, content.FileName)}, message.PlaceholderFile
+		file := c.mediaSource(ctx, "文件", content.FileURL)
+		return obmodel.OutMessage{message.IncomingFile(file, content.FileURL, content.FileName)}, message.PlaceholderFile
 
 	case model.ContentTypeVideo:
 		content, err := payload.VideoContent()
@@ -187,7 +188,8 @@ func (c *Converter) segments(ctx context.Context, payload *model.Message, comman
 			c.logger().Warn("解析视频内容失败，已降级为占位文本", "msg_id", payload.MsgID, "err", err)
 			return message.IncomingPlaceholder(payload.ContentType), ""
 		}
-		return obmodel.OutMessage{message.IncomingVideo(content.VideoURL, content.VideoURL)}, message.PlaceholderVideo
+		file := c.mediaSource(ctx, "视频", content.VideoURL)
+		return obmodel.OutMessage{message.IncomingVideo(file, content.VideoURL)}, message.PlaceholderVideo
 
 	case model.ContentTypeAudio:
 		content, err := payload.AudioContent()
@@ -195,7 +197,8 @@ func (c *Converter) segments(ctx context.Context, payload *model.Message, comman
 			c.logger().Warn("解析语音内容失败，已降级为占位文本", "msg_id", payload.MsgID, "err", err)
 			return message.IncomingPlaceholder(payload.ContentType), ""
 		}
-		return obmodel.OutMessage{message.IncomingAudio(content.AudioURL, content.AudioURL)}, message.PlaceholderAudio
+		file := c.mediaSource(ctx, "语音", content.AudioURL)
+		return obmodel.OutMessage{message.IncomingAudio(file, content.AudioURL)}, message.PlaceholderAudio
 
 	default:
 		return message.IncomingPlaceholder(payload.ContentType), ""
@@ -225,6 +228,24 @@ func (c *Converter) imageSegments(ctx context.Context, payload *model.Message) (
 	name := content.ImageName
 	segment := message.IncomingImage(content.ImageURL, content.ImageURL, name)
 	return obmodel.OutMessage{segment}, message.PlaceholderImage
+}
+
+// mediaSource 把云湖的文件、视频与语音下载成 base64。
+//
+// 这些媒体同样受 CDN 的来源限制，框架直接拿地址去下载会得到 403，所以先在本进程
+// 里下载再交给框架。下载失败时退回原地址，至少留下可追溯的线索。
+func (c *Converter) mediaSource(ctx context.Context, kind, rawURL string) string {
+	if c.Media == nil || rawURL == "" {
+		return rawURL
+	}
+
+	_, data, err := c.Media.Load(ctx, rawURL)
+	if err != nil {
+		c.logger().Warn("下载媒体失败，已退化为直接给出地址", "kind", kind, "err", err)
+		return rawURL
+	}
+
+	return "base64://" + base64.StdEncoding.EncodeToString(data)
 }
 
 // instructionCommand 返回指令消息的指令名，其它事件返回空。
