@@ -19,14 +19,14 @@ var selftestUpgrader = websocket.Upgrader{}
 // selftestConfig 生成指向给定地址的配置内容。
 func selftestConfig(apiBase, subscribeURL, frameworkURL string) string {
 	return `
+bot:
+  token: test-token
 yunhu:
   api_base: ` + apiBase + `
   subscribe_url: ` + subscribeURL + `
-instances:
+onebot:
   - name: main
-    token: test-token
-    onebot:
-      url: ` + frameworkURL + `
+    url: ` + frameworkURL + `
 `
 }
 
@@ -133,13 +133,13 @@ func TestSelftestBotInfoFailed(t *testing.T) {
 
 	results := Selftest(context.Background(), Options{ConfigPath: writeSelftestConfig(t, config)})
 
-	if got := statusOf(results, "实例 main · 机器人信息"); got != StatusFailed {
+	if got := statusOf(results, "机器人信息"); got != StatusFailed {
 		t.Errorf("机器人信息检查的状态为 %q", got)
 	}
-	if got := statusOf(results, "实例 main · 框架握手"); got != StatusSkipped {
+	if got := statusOf(results, "框架握手"); got != StatusSkipped {
 		t.Errorf("框架握手的状态为 %q，期望跳过", got)
 	}
-	if got := statusOf(results, "实例 main · 订阅连接"); got != StatusPassed {
+	if got := statusOf(results, "订阅连接"); got != StatusPassed {
 		t.Errorf("订阅连接的状态为 %q", got)
 	}
 }
@@ -168,10 +168,10 @@ func TestSelftestSubscribeFailed(t *testing.T) {
 
 	results := Selftest(context.Background(), Options{ConfigPath: writeSelftestConfig(t, config)})
 
-	if got := statusOf(results, "实例 main · 订阅连接"); got != StatusFailed {
+	if got := statusOf(results, "订阅连接"); got != StatusFailed {
 		t.Errorf("订阅连接的状态为 %q，期望失败", got)
 	}
-	if got := statusOf(results, "实例 main · 框架握手"); got != StatusPassed {
+	if got := statusOf(results, "框架握手 main"); got != StatusPassed {
 		t.Errorf("框架握手的状态为 %q", got)
 	}
 }
