@@ -175,6 +175,7 @@ HelloYunhu/
 | `docs/design/architecture.md` | 模块划分、数据流、并发模型、错误处理 | M1 期间 |
 | `docs/design/protocol-mapping.md` | 事件、接口、消息段、标识的完整映射表 | M2 期间 |
 | `docs/design/id-mapping.md` | 映射算法、表结构与恢复方式 | M2 期间 |
+| `docs/guides/compatibility.md` | 消息类型、事件与接口的支持矩阵，平台限制与替代做法 | 从 M3 起持续更新 |
 | `docs/guides/quickstart.md` | 安装、配置与首次接入 | M4 |
 | `docs/guides/configuration.md` | 全部配置项说明 | M4 |
 | `docs/guides/troubleshooting.md` | 常见问题与排查方法 | M4 |
