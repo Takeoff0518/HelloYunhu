@@ -1,0 +1,84 @@
+name: 发行
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 构建并按标签发布
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 运行测试
+        run: go test -race -count=1 ./...
+
+      - name: 构建三平台产物
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          commit="$(git rev-parse --short HEAD)"
+          date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          for target in linux/amd64 windows/amd64 darwin/arm64; do
+            goos="${target%/*}"
+            goarch="${target#*/}"
+            name="helloyunhu-${goos}-${goarch}"
+            work="dist/${name}"
+            mkdir -p "${work}"
+
+            binary="helloyunhu"
+            if [ "${goos}" = "windows" ]; then
+              binary="helloyunhu.exe"
+            fi
+
+            CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
+              go build -trimpath \
+                -ldflags "-s -w -X main.version=${version} -X main.commit=${commit} -X main.date=${date}" \
+                -o "${work}/${binary}" ./cmd/helloyunhu
+
+            cp LICENSE README.md "${work}/"
+            mkdir -p "${work}/examples"
+            cp examples/config.yaml "${work}/examples/"
+          done
+
+      - name: 打包并生成校验和
+        run: |
+          set -euo pipefail
+          cd dist
+
+          for dir in */; do
+            name="${dir%/}"
+            case "${name}" in
+              *windows*)
+                (cd "${name}" && zip -qr "../${name}.zip" .)
+                ;;
+              *)
+                tar -czf "${name}.tar.gz" -C "${name}" .
+                ;;
+            esac
+          done
+
+          sha256sum ./*.tar.gz ./*.zip > sha256sums.txt
+          cat sha256sums.txt
+
+      - name: 创建发行版
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/*.tar.gz dist/*.zip dist/sha256sums.txt \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
