@@ -123,6 +123,13 @@ func (l Loader) download(ctx context.Context, source string) (string, []byte, er
 		return "", nil, fmt.Errorf("构造媒体下载请求: %w", err)
 	}
 
+	// 云湖的图片 CDN 校验来源，缺少 Referer 时返回 403。社区适配器统一使用这个
+	// 来源值，这里照同样的方式处理。
+	request.Header.Set("User-Agent", "Mozilla/5.0")
+	if referer := refererFor(source); referer != "" {
+		request.Header.Set("Referer", referer)
+	}
+
 	response, err := client.Do(request)
 	if err != nil {
 		return "", nil, fmt.Errorf("下载媒体 %s: %w", source, err)
@@ -153,6 +160,29 @@ func (l Loader) limit() int64 {
 		return l.MaxBytes
 	}
 	return defaultMaxBytes
+}
+
+// yunhuReferer 是云湖媒体 CDN 要求的来源地址。
+const yunhuReferer = "https://myapp.jwznb.com"
+
+// 需要对云湖 CDN 附带来源的域名后缀。
+var yunhuHosts = []string{".jwznb.com", ".jwzhd.com"}
+
+// refererFor 返回下载该地址时需要附带的来源地址，非云湖 CDN 返回空。
+func refererFor(source string) string {
+	parsed, err := url.Parse(source)
+	if err != nil {
+		return ""
+	}
+
+	host := parsed.Hostname()
+	for _, suffix := range yunhuHosts {
+		if strings.HasSuffix(host, suffix) {
+			return yunhuReferer
+		}
+	}
+
+	return ""
 }
 
 // fileName 从地址中提取文件名，取不到时给出默认值。

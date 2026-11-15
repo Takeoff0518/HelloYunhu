@@ -116,6 +116,28 @@ func TestLoadURLBadStatus(t *testing.T) {
 	}
 }
 
+func TestRefererFor(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{name: "云湖图片域名", source: "https://chat-img.jwznb.com/a.jpg", want: yunhuReferer},
+		{name: "云湖头像域名", source: "https://chat-img3.jwznb.com/a.webp", want: yunhuReferer},
+		{name: "云湖主域名", source: "https://ws.jwzhd.com/a.png", want: yunhuReferer},
+		{name: "其它站点", source: "https://example.com/a.png", want: ""},
+		{name: "本地路径", source: "a.png", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := refererFor(tt.source); got != tt.want {
+				t.Errorf("来源为 %q，期望 %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestLoadEmptySource(t *testing.T) {
 	if _, _, err := (Loader{}).Load(context.Background(), "  "); err == nil {
 		t.Fatal("空来源应返回错误")
