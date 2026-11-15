@@ -43,10 +43,10 @@
 | `message.receive.instruction` | 与普通消息相同 | `✓` | 指令名拼回正文，原始指令名放在扩展字段 `yunhu.instruction` |
 | 连接建立 | `meta_event` → `lifecycle` → `connect` | `✓` | 握手成功后立即发送 |
 | 心跳 | `meta_event` → `heartbeat` | `计划中` | AstrBot 不依赖心跳 |
-| `group.join` | `notice` → `group_increase` | `计划中` | 当前记录日志后跳过 |
-| `group.leave` | `notice` → `group_decrease` | `计划中` | 当前记录日志后跳过 |
-| `bot.followed` | `notice` → `friend_add` | `计划中` | 当前记录日志后跳过 |
-| `bot.unfollowed` | 自定义 `notice_type` | `计划中` | OneBot 没有对应的标准类型 |
+| `group.join` | `notice` → `group_increase` | `✓` | `sub_type` 固定 `approve`，平台没有操作者字段，`operator_id` 为 0 |
+| `group.leave` | `notice` → `group_decrease` | `✓` | 平台不区分主动退出与被踢，`sub_type` 固定 `leave` |
+| `bot.followed` | `notice` → `friend_add` | `✓` | 事件里的字段名尚未在真实环境抓包确认，解析同时接受 `userId`、`user_id`、`senderId` |
+| `bot.unfollowed` | 自定义 `notice_type` | `✓` | 取 `yunhu_friend_remove`，OneBot 没有标准类型 |
 | 撤回 | `notice` → `message_recall` | `✗` | 平台不推送撤回事件 |
 | 其它事件 | 无 | `✗` | 在 debug 级别记录事件类型后丢弃 |
 
@@ -110,10 +110,9 @@
 
 ## 6. 计划内
 
-- 通知类事件：入群、退群、关注、取关四种事件转成 `notice`。
 - 心跳事件。
 - 接收方式增加 Webhook，与订阅连接并存，按事件标识去重。
-- Docker 镜像与三平台发布包。
+- 三平台发布包与校验和。Docker 镜像推迟到发布之后。
 - 云湖上线「获取机器人用户列表」后，把 `get_friend_list` 从空数组换成真实数据。
 - `get_msg` 覆盖发送方向的消息。
 - 并发 10 条消息不乱序与双实例隔离的验收。
