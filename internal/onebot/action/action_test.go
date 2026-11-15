@@ -573,6 +573,34 @@ func TestMentionTextUsesNickname(t *testing.T) {
 	}
 }
 
+// TestActionSuffixIsStripped 校验 _async 与 _rate_limited 两种调用后缀。
+func TestActionSuffixIsStripped(t *testing.T) {
+	dispatcher, _ := newDispatcher(t)
+
+	for _, name := range []string{"get_status_async", "get_status_rate_limited", "get_status_async_rate_limited"} {
+		data, err := dispatcher.Handle(context.Background(), name, nil)
+		if err != nil {
+			t.Fatalf("%s 处理失败: %v", name, err)
+		}
+		if data.(map[string]any)["online"] != true {
+			t.Errorf("%s 返回 %v", name, data)
+		}
+	}
+
+	// 未实现的接口带后缀时，错误里保留调用方写的名字，便于排查。
+	_, err := dispatcher.Handle(context.Background(), "nonexistent_async", nil)
+	if err == nil {
+		t.Fatal("期望返回未实现错误")
+	}
+	var actionErr *obmodel.ActionError
+	if !errors.As(err, &actionErr) || actionErr.Retcode != obmodel.RetcodeNotFound {
+		t.Errorf("错误为 %v，期望 1404", err)
+	}
+	if !strings.Contains(actionErr.Wording, "nonexistent_async") {
+		t.Errorf("错误措辞为 %q，应包含原始接口名", actionErr.Wording)
+	}
+}
+
 // TestCanSendCapabilities 校验能力声明的返回值与配置一致。
 func TestCanSendCapabilities(t *testing.T) {
 	dispatcher, _ := newDispatcher(t)

@@ -52,6 +52,12 @@ type Dispatcher struct {
 
 // Handle 处理一次接口调用，返回值会写进响应的 data 字段。
 func (d *Dispatcher) Handle(ctx context.Context, name string, params json.RawMessage) (any, error) {
+	original := name
+	name = normalizeActionName(name)
+	if name != original {
+		d.logger().Debug("接口名带调用后缀，按同步方式处理", "action", original, "normalized", name)
+	}
+
 	switch name {
 	case "send_group_msg":
 		return d.sendGroupMessage(ctx, params)
@@ -89,11 +95,29 @@ func (d *Dispatcher) Handle(ctx context.Context, name string, params json.RawMes
 		return d.setGroupKick(ctx, params)
 	case "get_version_info":
 		return map[string]any{"app_name": "HelloYunhu", "protocol_version": "v11"}, nil
-	case ".handle_quick_operation", ".handle_quick_operation_async":
+	case ".handle_quick_operation":
 		// aiocqhttp 处理快速操作后会回调这个接口，返回成功即可。
 		return map[string]any{}, nil
 	default:
-		return nil, obmodel.NotImplemented(name)
+		return nil, obmodel.NotImplemented(original)
+	}
+}
+
+// normalizeActionName 去掉 OneBot 的调用后缀。
+//
+// OneBot v11 允许给任何接口名追加 _async（异步调用，立刻返回）与 _rate_limited
+// （排队限速调用）。这里没有异步队列，统一剥掉后缀按同步方式处理。同步返回对
+// 调用方没有副作用，比回 1404 让它当成接口不存在要好。
+func normalizeActionName(name string) string {
+	for {
+		switch {
+		case strings.HasSuffix(name, "_async"):
+			name = strings.TrimSuffix(name, "_async")
+		case strings.HasSuffix(name, "_rate_limited"):
+			name = strings.TrimSuffix(name, "_rate_limited")
+		default:
+			return name
+		}
 	}
 }
 
