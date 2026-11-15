@@ -45,14 +45,17 @@ type Config struct {
 type Options struct {
 	Config Config
 	Logger *slog.Logger
+	// RawEvents 为真时在 debug 级别输出收到的原始事件。
+	RawEvents bool
 }
 
 // Client 是订阅连接客户端。
 type Client struct {
-	url    *url.URL
-	token  string
-	logger *slog.Logger
-	dialer *websocket.Dialer
+	url       *url.URL
+	token     string
+	logger    *slog.Logger
+	dialer    *websocket.Dialer
+	rawEvents bool
 
 	// 重连间隔，测试里可以改小。
 	minDelay time.Duration
@@ -81,9 +84,10 @@ func New(opt Options) (*Client, error) {
 	}
 
 	return &Client{
-		url:    parsed,
-		token:  opt.Config.Token,
-		logger: logger,
+		url:       parsed,
+		token:     opt.Config.Token,
+		logger:    logger,
+		rawEvents: opt.RawEvents,
 		dialer: &websocket.Dialer{
 			Proxy:            http.ProxyFromEnvironment,
 			HandshakeTimeout: handshakeTimeout,
@@ -91,6 +95,37 @@ func New(opt Options) (*Client, error) {
 		minDelay: minReconnectDelay,
 		maxDelay: maxReconnectDelay,
 	}, nil
+}
+
+// Probe 建立一次订阅连接后立即关闭，用于自检。
+//
+// 只验证握手与鉴权，不等待事件，因此不会在自检阶段长时间占用连接。
+func (c *Client) Probe(ctx context.Context) error {
+	conn, response, err := c.dialer.DialContext(ctx, c.endpoint(), nil)
+	if err != nil {
+		if response != nil {
+			_ = response.Body.Close()
+			return fmt.Errorf("订阅握手失败，状态码 %d: %w", response.StatusCode, err)
+		}
+		return fmt.Errorf("连接订阅端点: %w", err)
+	}
+
+	if response != nil {
+		_ = response.Body.Close()
+	}
+	_ = conn.Close()
+
+	return nil
+}
+
+// endpoint 返回带令牌的订阅地址。
+func (c *Client) endpoint() string {
+	endpoint := *c.url
+	query := endpoint.Query()
+	query.Set("token", c.token)
+	endpoint.RawQuery = query.Encode()
+
+	return endpoint.String()
 }
 
 // Run 持续接收事件并写入 out，直到上下文结束。
@@ -134,12 +169,7 @@ func (c *Client) Run(ctx context.Context, out chan<- model.Envelope) error {
 //
 // 返回的布尔值表示连接是否成功建立过，用于决定重连间隔是否重置。
 func (c *Client) listen(ctx context.Context, out chan<- model.Envelope) (bool, error) {
-	endpoint := *c.url
-	query := endpoint.Query()
-	query.Set("token", c.token)
-	endpoint.RawQuery = query.Encode()
-
-	conn, response, err := c.dialer.DialContext(ctx, endpoint.String(), nil)
+	conn, response, err := c.dialer.DialContext(ctx, c.endpoint(), nil)
 	if err != nil {
 		if response != nil {
 			_ = response.Body.Close()
@@ -176,6 +206,11 @@ func (c *Client) listen(ctx context.Context, out chan<- model.Envelope) (bool, e
 			return true, fmt.Errorf("读取订阅消息: %w", err)
 		}
 
+		if c.rawEvents {
+			// 原始事件包含消息正文与昵称，只在显式开启时输出，且限制长度。
+			c.logger.Debug("收到原始订阅事件", "payload", truncate(payload, maxRawEventBytes))
+		}
+
 		var envelope model.Envelope
 		if err := json.Unmarshal(payload, &envelope); err != nil {
 			c.logger.Warn("订阅消息无法解析，已忽略", "err", err)
@@ -188,4 +223,15 @@ func (c *Client) listen(ctx context.Context, out chan<- model.Envelope) (bool, e
 			return true, nil
 		}
 	}
+}
+
+// maxRawEventBytes 是原始事件日志的截断长度。
+const maxRawEventBytes = 4096
+
+// truncate 把内容截断到给定长度，超出时在末尾标注。
+func truncate(payload []byte, limit int) string {
+	if len(payload) <= limit {
+		return string(payload)
+	}
+	return string(payload[:limit]) + "...(已截断)"
 }

@@ -168,18 +168,43 @@ func (c *Client) SendEvent(event any) error {
 	return c.writeJSON(event)
 }
 
-// connect 建立一次连接并读取消息，连接断开时返回。
+// Probe 建立一次连接后立即关闭，用于自检。
 //
-// 返回的布尔值表示这次连接是否成功建立过，用于决定重连间隔是否重置。
-func (c *Client) connect(ctx context.Context) (bool, error) {
+// 只验证握手与头部是否正确，不发送事件，因此不会让框架登记成可用连接。
+func (c *Client) Probe(ctx context.Context) error {
+	conn, response, err := c.dialer.DialContext(ctx, c.cfg.URL, c.header())
+	if err != nil {
+		if response != nil {
+			_ = response.Body.Close()
+			return fmt.Errorf("握手失败，状态码 %d: %w", response.StatusCode, err)
+		}
+		return fmt.Errorf("连接框架: %w", err)
+	}
+
+	if response != nil {
+		_ = response.Body.Close()
+	}
+	_ = conn.Close()
+
+	return nil
+}
+
+// header 返回握手头。
+func (c *Client) header() http.Header {
 	header := http.Header{}
 	header.Set("X-Self-ID", strconv.FormatInt(c.cfg.SelfID, 10))
 	header.Set("X-Client-Role", c.cfg.Role)
 	if c.cfg.AccessToken != "" {
 		header.Set("Authorization", "Bearer "+c.cfg.AccessToken)
 	}
+	return header
+}
 
-	conn, response, err := c.dialer.DialContext(ctx, c.cfg.URL, header)
+// connect 建立一次连接并读取消息，连接断开时返回。
+//
+// 返回的布尔值表示这次连接是否成功建立过，用于决定重连间隔是否重置。
+func (c *Client) connect(ctx context.Context) (bool, error) {
+	conn, response, err := c.dialer.DialContext(ctx, c.cfg.URL, c.header())
 	if err != nil {
 		if response != nil {
 			_ = response.Body.Close()
