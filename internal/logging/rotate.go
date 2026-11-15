@@ -53,6 +53,8 @@ type RotatingWriter struct {
 	file *os.File
 	day  string
 
+	// tidyMu 保证同一时刻只有一次整理在跑，避免两次整理抢同一个文件。
+	tidyMu sync.Mutex
 	// 后台任务，Close 时等待它们结束。
 	workers sync.WaitGroup
 }
@@ -93,7 +95,7 @@ func NewRotatingWriter(opt RotateOptions) (*RotatingWriter, error) {
 	writer.day = day
 
 	// 启动时整理一次，补压上次进程退出前没来得及压缩的文件。
-	writer.background(day)
+	writer.background()
 
 	return writer, nil
 }
@@ -117,7 +119,7 @@ func (w *RotatingWriter) Write(p []byte) (int, error) {
 			}
 			w.file = file
 			w.day = day
-			w.background(day)
+			w.background()
 		}
 	}
 
@@ -125,11 +127,13 @@ func (w *RotatingWriter) Write(p []byte) (int, error) {
 }
 
 // Close 等待后台整理结束并关闭当前文件。
+//
+// 先拿住写锁再等待，避免等待期间又有写入把新的整理任务加进等待组。
 func (w *RotatingWriter) Close() error {
-	w.workers.Wait()
-
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	w.workers.Wait()
 
 	if w.file == nil {
 		return nil
@@ -155,12 +159,12 @@ func (w *RotatingWriter) open(day string) (*os.File, error) {
 }
 
 // background 启动一次旧文件整理。
-func (w *RotatingWriter) background(today string) {
+func (w *RotatingWriter) background() {
 	w.workers.Add(1)
 	go func() {
 		defer w.workers.Done()
 
-		if err := w.tidy(today); err != nil {
+		if err := w.tidy(); err != nil {
 			fmt.Fprintf(w.report, "整理日志文件失败: %v\n", err)
 		}
 	}()
@@ -168,8 +172,15 @@ func (w *RotatingWriter) background(today string) {
 
 // tidy 压缩过期以外的旧文件，并删除超出保留天数的文件。
 //
-// 只处理文件名符合日期加 .log 或 .log.gz 的文件，目录里的其它内容不动。
-func (w *RotatingWriter) tidy(today string) error {
+// 只处理文件名符合日期加 .log 或 .log.gz 的文件，目录里的其它内容不动。当天与
+// 日期更晚的文件一律跳过：整理在后台跑，期间可能已经跨天并写出更新的文件，按
+// 启动时拿到的日期判断会把新文件误当成旧文件压缩掉。
+func (w *RotatingWriter) tidy() error {
+	w.tidyMu.Lock()
+	defer w.tidyMu.Unlock()
+
+	today := w.today()
+
 	entries, err := os.ReadDir(w.dir)
 	if err != nil {
 		return fmt.Errorf("读取日志目录 %s: %w", w.dir, err)
@@ -191,7 +202,7 @@ func (w *RotatingWriter) tidy(today string) error {
 
 		name := entry.Name()
 		day, compressed, ok := parseLogName(name)
-		if !ok || day == today {
+		if !ok || day >= today {
 			continue
 		}
 

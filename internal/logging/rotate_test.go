@@ -8,22 +8,33 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
 // clock 是可手动推进的时钟，用于模拟跨天。
+//
+// 后台整理协程会读取当前时间，测试协程随时可能推进它，因此读写都要加锁，
+// 否则竞态检测会报数据竞争。
 type clock struct {
+	mu sync.Mutex
 	at time.Time
 }
 
 // now 返回当前模拟时间。
 func (c *clock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	return c.at
 }
 
 // moveTo 把模拟时间推到指定日期。
 func (c *clock) moveTo(year int, month time.Month, day int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.at = time.Date(year, month, day, 9, 0, 0, 0, time.Local)
 }
 
