@@ -107,6 +107,8 @@
 
 部分框架会把单个消息段直接当作 `message` 传入，这种形态按一段处理。媒体的本地路径可能是 `file:///E:/…` 这种三斜杠写法，读取前会按盘符去掉多余的前导斜杠。
 
+上传前会按内容探测结果补齐文件名后缀，并去掉名字里的目录部分。云湖按文件名后缀判断上传类型：图片接口只接受图片后缀，视频接口只接受 mp4，后缀与接口不匹配时返回 `code -1`。OneBot 侧给出的媒体经常没有可用后缀，`base64://` 形式的内容在读取环节统一叫 `upload.bin`，直接上传会被拒绝。实测数据见第 5 节。
+
 ## 4. 标识映射
 
 | 云湖标识 | OneBot 标识 | 处理方式 |
@@ -139,6 +141,12 @@
 | `POST /image/upload` | `{"imageKey":"FplutsXGo96FnEEdy0pIxjIu7_Ko"}` | 图片上传返回 `imageKey` |
 | `POST /file/upload` | `{"fileKey":"FvMpoya0gU76yX9mQY8_l7f6k2qs"}` | 文件上传返回 `fileKey` |
 | `POST /video/upload` | `{"videoKey":"Fg61uTCfVc3ldhMtd3Iy-nYwUaAj"}` | 视频上传返回 `videoKey` |
+| `POST /image/upload` 的文件名 | 同一张 PNG 用 `upload.png` 上传成功，用 `upload.bin` 或 `a.txt` 上传返回 `{"code":-1,"msg":"文件类型必须为图片"}` | 云湖按文件名后缀判断上传类型，图片内容配错后缀同样被拒 |
+| `POST /image/upload` 的内容 | 名字为 `upload.png` 而内容是纯文本时返回 `文件类型必须为图片`；JPEG 内容配 `.png` 名字时上传成功 | 内容也必须是图片，但不要求后缀与内容格式一致 |
+| `POST /image/upload` 的表单形态 | 字段名改成 `file`、省略文件名、或直接把 PNG 作为请求体发送，都返回 `{"code":-1,"msg":"图片获取失败"}` | 只接受 multipart 表单，字段名为 `image`，且必须带文件名 |
+| `POST /image/upload` 的去重 | 同一张图换不同文件名重复上传，返回的 `imageKey` 完全相同 | `imageKey` 由内容决定，与文件名无关 |
+| `POST /video/upload` 的文件名 | 真 MP4 配 `.mp4` 上传成功；同一内容配 `.png` 返回 `文件类型必须为mp4格式视频`；伪 MP4 内容配 `.mp4` 返回 `文件类型必须为图片` | 视频接口同样按后缀判断，平台的错误文案存在错位 |
+| `POST /file/upload` 的文件名 | `.bin` 与 `.txt` 都能上传成功 | 文件接口不校验后缀 |
 | 发送图文混排 | 一条三段的消息被拆成三条 `POST /bot/send`，依次为文本、图片、文本 | 拆分与顺序符合设计，云湖侧显示为三条消息 |
 | 发送私聊 | `recvType` 为 `user`，`recvId` 为用户标识，返回 `messageInfo` | 私聊发送可用 |
 | 重启后引用 | 进程重启后仍能把整数标识 `31` 反查为 `parentId=c941fdc2…` | 标识映射落盘有效，引用不因重启失效 |
