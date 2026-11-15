@@ -26,6 +26,15 @@ storage:
 yunhu:
   api_base: https://chat-go.jwzhd.com/open-apis/v1
   subscribe_url: wss://ws.jwzhd.com/subscribe
+  # 每个实例每秒最多发起的接口调用次数，0 表示不限流。
+  # 平台上限是每秒十次，默认留有余量；发送消息不做重试，这里只做匀速。
+  rate_limit: 10
+
+# 只读诊断接口。默认关闭，开启后提供 /healthz 与 /status 两个端点。
+diagnostics:
+  enabled: false
+  # 只监听本机，不要暴露到公网。
+  listen: 127.0.0.1:9090
 
 # 机器人实例。一个进程可以同时运行多个实例，实例之间互不影响。
 instances:
