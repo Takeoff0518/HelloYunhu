@@ -1,5 +1,5 @@
-# HelloYunhu 配置示例。复制到仓库根目录并改名为 config.yaml 后按需修改。
-# 运行配置包含机器人令牌，已在 .gitignore 中排除。
+# HelloYunhu 配置示例。程序首次运行会在工作目录生成 config.yaml 并提示填写，
+# 也可以复制本文件改名后按需修改。运行配置包含机器人令牌，已在 .gitignore 中排除。
 #
 # 全部配置项的说明在 M4 补齐的 docs/guides/configuration.md 中。
 
