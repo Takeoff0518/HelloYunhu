@@ -39,6 +39,9 @@ HelloYunhu 补上的就是这一层。对于机器人框架，它表现为一个
 
 ## 文档
 
+- [快速开始](docs/guides/quickstart.md)
+- [配置说明](docs/guides/configuration.md)
+- [常见问题](docs/guides/troubleshooting.md)
 - [开发计划](docs/design/roadmap.md)
 - [项目状态](docs/design/status.md)
 - [架构说明](docs/design/architecture.md)

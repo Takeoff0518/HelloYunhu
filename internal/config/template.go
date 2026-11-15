@@ -18,7 +18,7 @@ var ErrExists = errors.New("配置文件已存在")
 const Template = `# HelloYunhu 配置文件。
 #
 # 本文件由程序在首次运行时生成。填写机器人令牌与框架地址后，再次运行程序即可。
-# 完整配置项说明见 examples/config.yaml 的注释，发布后并入手册。
+# 完整配置项说明见 docs/guides/configuration.md 与 examples/config.yaml 的注释。
 # 文件包含机器人令牌，不要提交到版本库。
 
 # 云湖机器人本身。一个进程服务一个机器人，多个机器人请开多个进程。
