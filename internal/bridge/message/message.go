@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/identity"
 	obmodel "github.com/Takeoff0518/HelloYunhu/internal/onebot/model"
@@ -31,18 +32,116 @@ const (
 
 // IncomingText 把云湖文本消息转换为 OneBot 消息段。
 //
-// 云湖的 @ 只记录用户标识，正文里是被 @ 的人的昵称，两者没有直接对应关系，
-// 因此 @ 段统一放在正文之前。取得群成员信息后可以还原 @ 在正文中的位置。
+// 云湖的正文里带着「@昵称」，同时用 at 数组列出被 @ 的用户标识，两者顺序一致。
+// 框架按正文匹配命令，因此这里把提及文字从正文里剪掉，换成位置相同的 at 段，正文
+// 剩余部分保留原顺序。两边的数量对不上时说明格式与预期不符，退回成 @ 段在前、
+// 正文原样保留，至少不丢内容。
 func IncomingText(content *model.TextContent) obmodel.OutMessage {
-	segments := make(obmodel.OutMessage, 0, len(content.At)+1)
+	mentions := scanMentions(content.Text)
 
-	for _, raw := range content.At {
-		qq, _ := identity.ParseID(raw)
-		segments = append(segments, obmodel.At(qq))
+	if len(mentions) == 0 || len(mentions) != len(content.At) {
+		segments := make(obmodel.OutMessage, 0, len(content.At)+1)
+		for _, raw := range content.At {
+			qq, _ := identity.ParseID(raw)
+			segments = append(segments, obmodel.At(qq))
+		}
+		return append(segments, obmodel.Text(content.Text))
 	}
 
-	segments = append(segments, obmodel.Text(content.Text))
+	var segments obmodel.OutMessage
+	cursor := 0
+
+	for index, mention := range mentions {
+		if mention.start > cursor {
+			segments = append(segments, obmodel.Text(content.Text[cursor:mention.start]))
+		}
+		qq, _ := identity.ParseID(content.At[index])
+		segments = append(segments, obmodel.At(qq))
+		cursor = mention.next
+	}
+
+	if cursor < len(content.Text) {
+		segments = append(segments, obmodel.Text(content.Text[cursor:]))
+	}
+	if len(segments) == 0 {
+		segments = append(segments, obmodel.Text(content.Text))
+	}
+
 	return segments
+}
+
+// MentionNames 从正文与 at 数组里提取提及的昵称，供发送方向复用。
+//
+// 云湖的 at 数组只有用户标识，而发送时的正文需要昵称才能显示成提及。别人 @ 某人
+// 的时候正文里正好带着昵称，顺手记下来，之后回复同一个人就能用上。
+func MentionNames(content *model.TextContent) [][2]string {
+	mentions := scanMentions(content.Text)
+	if len(mentions) == 0 || len(mentions) != len(content.At) {
+		return nil
+	}
+
+	pairs := make([][2]string, 0, len(mentions))
+	for index, mention := range mentions {
+		pairs = append(pairs, [2]string{content.At[index], mention.name})
+	}
+
+	return pairs
+}
+
+// mention 是正文里的一处提及。
+type mention struct {
+	// start 是 @ 在正文中的起始位置。
+	start int
+	// end 是昵称结束的位置。
+	end int
+	// next 是从正文里剪掉这一段之后，下一段正文开始的位置。
+	next int
+	// name 是昵称，不含 @。
+	name string
+}
+
+// scanMentions 找出正文里的所有「@昵称」。
+//
+// 昵称以空格、制表符或零宽空格结束。云湖客户端在提及后面还会插入一个零宽空格，
+// 剪裁时一并跳过，避免剩下的正文以空白开头导致框架匹配不到命令。
+func scanMentions(text string) []mention {
+	var found []mention
+
+	for index := 0; index < len(text); {
+		if text[index] != '@' {
+			index++
+			continue
+		}
+
+		end := index + 1
+		for end < len(text) {
+			r, size := utf8.DecodeRuneInString(text[end:])
+			if r == ' ' || r == '\t' || r == '\u200b' || r == '\n' {
+				break
+			}
+			end += size
+		}
+
+		if end == index+1 {
+			index++
+			continue
+		}
+
+		next := end
+		for next < len(text) {
+			r, size := utf8.DecodeRuneInString(text[next:])
+			if r == ' ' || r == '\t' || r == '\u200b' {
+				next += size
+				continue
+			}
+			break
+		}
+
+		found = append(found, mention{start: index, end: end, next: next, name: text[index+1 : end]})
+		index = end
+	}
+
+	return found
 }
 
 // IncomingImage 构造图片消息段。

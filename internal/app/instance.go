@@ -52,15 +52,18 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 	mediaLoader := &media.Loader{}
 	// 最近消息缓存用于 get_msg 回放，容量按默认值。
 	recent := cache.NewMessages(0)
+	// 昵称缓存供发送 @ 使用，来源是收到的消息事件。
+	nicknames := cache.NewNicknames(0)
 
 	dispatcher := &action.Dispatcher{
-		SelfID:   selfID,
-		Nickname: info.Nickname,
-		API:      apiClient,
-		Messages: messages,
-		Media:    mediaLoader,
-		Recent:   recent,
-		Logger:   log,
+		SelfID:    selfID,
+		Nickname:  info.Nickname,
+		API:       apiClient,
+		Messages:  messages,
+		Media:     mediaLoader,
+		Recent:    recent,
+		Nicknames: nicknames,
+		Logger:    log,
 	}
 
 	var onebot *onebotclient.Client
@@ -91,11 +94,12 @@ func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.C
 	}
 
 	converter := &event.Converter{
-		SelfID:   selfID,
-		BotID:    info.BotID,
-		Messages: messages,
-		Media:    mediaLoader,
-		Logger:   log,
+		SelfID:    selfID,
+		BotID:     info.BotID,
+		Messages:  messages,
+		Media:     mediaLoader,
+		Nicknames: nicknames,
+		Logger:    log,
 	}
 
 	events := make(chan model.Envelope, eventBufferSize)

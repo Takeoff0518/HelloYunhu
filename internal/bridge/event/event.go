@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Takeoff0518/HelloYunhu/internal/bridge/cache"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/identity"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/media"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/message"
@@ -33,6 +34,8 @@ type Converter struct {
 	Messages identity.MessageStore
 	// Media 下载媒体内容，为空时图片退化为直接给出地址。
 	Media *media.Loader
+	// Nicknames 记录见过的昵称，发送 @ 时用来还原正文里要写的名字。
+	Nicknames *cache.Nicknames
 	// Logger 为空时丢弃日志。
 	Logger *slog.Logger
 }
@@ -85,6 +88,8 @@ func (c *Converter) messageEvent(ctx context.Context, envelope model.Envelope) (
 	if !exact {
 		c.logger().Warn("发送者标识无法解析为整数，已退化为哈希值", "sender_id", payload.Sender.SenderID)
 	}
+	// 发送者的昵称是现成的，留着给发送 @ 用。
+	c.Nicknames.Set(payload.Sender.SenderID, payload.Sender.SenderNickname)
 
 	messageID, err := c.Messages.MessageID(ctx, payload.Message.MsgID)
 	if err != nil {
@@ -155,6 +160,10 @@ func (c *Converter) segments(ctx context.Context, payload *model.Message, comman
 		if err != nil {
 			c.logger().Warn("解析文本内容失败，已降级为占位文本", "msg_id", payload.MsgID, "err", err)
 			return message.IncomingPlaceholder(payload.ContentType), ""
+		}
+		// 别人 @ 别人时正文里带着昵称，记下来供发送方向使用。
+		for _, pair := range message.MentionNames(content) {
+			c.Nicknames.Set(pair[0], pair[1])
 		}
 		if command != "" {
 			content.Text = joinCommand(command, content.Text)
