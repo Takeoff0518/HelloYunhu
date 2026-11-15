@@ -12,9 +12,9 @@ import (
 	obmodel "github.com/Takeoff0518/HelloYunhu/internal/onebot/model"
 )
 
-// messageParams 是消息类接口的参数。
+// messageParams 是消息类接口的参数。message_id 兼容数字与字符串。
 type messageParams struct {
-	MessageID int64 `json:"message_id"`
+	MessageID obmodel.IDValue `json:"message_id"`
 }
 
 // getMessage 处理 get_msg，从最近的缓存中回放完整事件。
@@ -26,17 +26,19 @@ func (d *Dispatcher) getMessage(_ context.Context, params json.RawMessage) (any,
 	if err := json.Unmarshal(params, &value); err != nil {
 		return nil, badRequest("get_msg", err)
 	}
-	if value.MessageID <= 0 {
+
+	messageID := value.MessageID.Int64()
+	if messageID <= 0 {
 		return nil, &obmodel.ActionError{Retcode: obmodel.RetcodeBadRequest, Wording: "get_msg 缺少 message_id"}
 	}
 
 	if d.Recent == nil {
-		return nil, messageNotCached(value.MessageID)
+		return nil, messageNotCached(messageID)
 	}
 
-	event, ok := d.Recent.Get(value.MessageID)
+	event, ok := d.Recent.Get(messageID)
 	if !ok {
-		return nil, messageNotCached(value.MessageID)
+		return nil, messageNotCached(messageID)
 	}
 
 	return event, nil

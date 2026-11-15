@@ -6,7 +6,12 @@
 // 消息的 message 字段必须是数组，sender 必须存在。
 package model
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 // 状态字段取值。
 const (
@@ -110,9 +115,9 @@ type (
 	AtData struct {
 		QQ int64 `json:"qq"`
 	}
-	// ReplyData 是引用段。
+	// ReplyData 是引用段。ID 兼容数字与字符串两种写法。
 	ReplyData struct {
-		ID int64 `json:"id"`
+		ID IDValue `json:"id"`
 	}
 	// ImageData 是图片段。File 可以是 base64://、网络地址或本地路径。
 	ImageData struct {
@@ -220,4 +225,37 @@ type HeartbeatEvent struct {
 	SelfID        int64  `json:"self_id"`
 	Status        Status `json:"status"`
 	Interval      int64  `json:"interval"`
+}
+
+// IDValue 是兼容数字与字符串的整数标识。
+//
+// 不同框架序列化标识的习惯不同：AstrBot 用数字，NoneBot2 的引用段用字符串。
+// 解析两者都接受，避免因为一个字段的写法差异让整条调用失败。
+type IDValue int64
+
+// UnmarshalJSON 接受 JSON 数字或字符串形式的整数。
+func (v *IDValue) UnmarshalJSON(raw []byte) error {
+	var number int64
+	if err := json.Unmarshal(raw, &number); err == nil {
+		*v = IDValue(number)
+		return nil
+	}
+
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil {
+		return err
+	}
+
+	parsed, err := strconv.ParseInt(strings.TrimSpace(text), 10, 64)
+	if err != nil {
+		return fmt.Errorf("标识 %q 不是整数: %w", text, err)
+	}
+
+	*v = IDValue(parsed)
+	return nil
+}
+
+// Int64 返回标准整数。
+func (v IDValue) Int64() int64 {
+	return int64(v)
 }
