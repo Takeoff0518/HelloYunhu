@@ -572,3 +572,23 @@ func TestMentionTextUsesNickname(t *testing.T) {
 		t.Errorf("正文为 %q", got)
 	}
 }
+
+// TestGetFriendList 校验好友列表返回空数组而不是 null。
+//
+// 框架按数组解析响应，null 会让遍历直接失败，所以响应必须是 []。
+func TestGetFriendList(t *testing.T) {
+	dispatcher, _ := newDispatcher(t)
+
+	data, err := dispatcher.Handle(context.Background(), "get_friend_list", nil)
+	if err != nil {
+		t.Fatalf("处理失败: %v", err)
+	}
+
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("序列化失败: %v", err)
+	}
+	if string(encoded) != "[]" {
+		t.Errorf("响应为 %s，期望 []", encoded)
+	}
+}
