@@ -51,13 +51,15 @@
 | `get_stranger_info` | 云湖无对应接口，返回空昵称 | 已实现 |
 | `get_msg` | 从最近消息缓存回放，未命中返回 1404 | 已实现 |
 | `.handle_quick_operation` | 直接返回成功 | 已实现 |
-| `delete_msg` | `POST /bot/recall` | 未实现，M3 |
-| `set_group_ban` | `POST /group/gag-member` | 未实现，M3 |
-| `set_group_kick` | `POST /group/remove-member` | 未实现，M3 |
+| `delete_msg` | `POST /bot/recall` | 已实现，依赖进程内的会话归属 |
+| `set_group_ban` | `POST /group/gag-member` | 已实现，需要禁言权限 |
+| `set_group_kick` | `POST /group/remove-member` | 已实现，需要移除成员权限 |
 | `get_image` | 下载到本地 | 未实现 |
 | 其它 | 返回 `retcode=1404` 与说明 | 默认行为 |
 
 `get_group_member_info` 在权限不足时返回空对象而不是错误，这是为了让框架保留 @ 消息段：框架只有在调用成功后才把 @ 段放进消息，而群里 @ 机器人是唤醒的必要条件。
+
+`delete_msg` 只拿到消息标识，云湖还需要会话标识与类型，因此收到的消息与发出的消息都会在进程内记一份归属。缓存不落盘，进程重启后撤回旧消息返回 1404。撤回接口的 `chatType` 取 `user` 或 `group`，事件里的私聊类型是 `bot`，调用前统一换算。
 
 框架之间对标识的序列化习惯不同：AstrBot 用数字，NoneBot2 的引用段把 `id` 序列化为字符串。接口实现同时接受数字与字符串，避免因为一个字段的写法差异让整条调用返回 100。
 
@@ -164,5 +166,6 @@
 下面几项依赖真实云湖环境继续验证，代码对多种写法都做了兼容，实测后需要回来收敛：
 
 1. `/group/members` 的字段名与角色取值。接口本身需要机器人在群后台获得成员列表权限，当前测试机器人没有授权，只确认了未授权时的错误码与降级行为。
-2. 撤回后的通知、编辑消息与禁言接口的请求参数与返回结构，属于 M3 范围。撤回接口本身已验证可用，但平台不推送撤回通知。
+2. 禁言与踢人的请求参数在真实环境尚未验证：`/group/gag-member` 按 `groupId`、`userId`、`gag`（秒，`-1` 为永久）组织，`/group/remove-member` 按 `groupId`、`userId` 组织，两者都需要机器人拥有对应权限。
 3. `/bot/messages` 的参数语义与返回内容，当前账号取不到数据。
+4. 撤回通知：平台不推送，无法向框架发出通知事件，只能主动撤回。
