@@ -21,6 +21,27 @@ const Template = `# HelloYunhu 配置文件。
 # 完整配置项说明见 examples/config.yaml 的注释，发布后并入手册。
 # 文件包含机器人令牌，不要提交到版本库。
 
+# 云湖机器人本身。一个进程服务一个机器人，多个机器人请开多个进程。
+bot:
+  token: ""
+
+# 事件从哪里进来。
+receive:
+  # websocket 用订阅连接，webhook 用 HTTP 推送，both 同时使用。
+  mode: websocket
+  # 只有 mode 含 webhook 时才需要这一段。
+  webhook:
+    listen: 127.0.0.1:8081
+    # 写在推送地址的路径里，至少 24 个字符。云湖的推送没有签名，它就是唯一的凭据。
+    token: ""
+    allowed_ips: []
+
+# 我们对外提供的 OneBot 连接，至少一个。每个连接对应一个框架。
+onebot:
+  - name: astrbot
+    url: ws://127.0.0.1:6199/ws
+    access_token: ""
+
 log:
   level: info
   format: text
@@ -44,15 +65,6 @@ capabilities:
 diagnostics:
   enabled: false
   listen: 127.0.0.1:9090
-
-instances:
-  - name: main
-    # 云湖机器人令牌，从机器人后台获取，必填。
-    token: ""
-    onebot:
-      # 机器人框架监听的反向 WebSocket 地址，必填。
-      url: ws://127.0.0.1:6199/ws
-      access_token: ""
 `
 
 // WriteTemplate 把默认配置写到 path。

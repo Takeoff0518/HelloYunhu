@@ -18,7 +18,9 @@ func TestHandler(t *testing.T) {
 				Version:        "v0.0.1",
 				StartedAt:      started,
 				UptimeSeconds:  30,
-				Instances:      1,
+				BotID:          "11464576",
+				Nickname:       "乐正绫TwinkLing",
+				Connections:    []Connection{{Name: "astrbot", Online: true}},
 				EventsReceived: 12,
 				ActionsHandled: 3,
 			}
@@ -41,8 +43,11 @@ func TestHandler(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &snapshot); err != nil {
 		t.Fatalf("解析状态失败: %v", err)
 	}
-	if snapshot.Version != "v0.0.1" || snapshot.Instances != 1 {
+	if snapshot.Version != "v0.0.1" || snapshot.BotID != "11464576" {
 		t.Errorf("状态为 %+v", snapshot)
+	}
+	if len(snapshot.Connections) != 1 || !snapshot.Connections[0].Online {
+		t.Errorf("连接状态为 %+v", snapshot.Connections)
 	}
 	if snapshot.EventsReceived != 12 || snapshot.ActionsHandled != 3 {
 		t.Errorf("计数为 %+v", snapshot)
