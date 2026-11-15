@@ -3,10 +3,12 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -104,6 +106,31 @@ func TestBotInfoSuccessCodeOne(t *testing.T) {
 	}
 	if info.BotID != "11464576" || info.Nickname != "乐正绫TwinkLing" {
 		t.Errorf("机器人信息为 %+v", info)
+	}
+}
+
+func TestLogsResponseData(t *testing.T) {
+	var logs bytes.Buffer
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"code":1,"data":{"msgId":"abc"},"msg":"success"}`)
+	}))
+	defer server.Close()
+
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	client, err := New(Config{BaseURL: server.URL + "/open-apis/v1", Token: "t", HTTPClient: server.Client(), Logger: logger})
+	if err != nil {
+		t.Fatalf("创建客户端失败: %v", err)
+	}
+
+	// 这份响应缺少 botId，解析会失败，但成功响应的原始数据应当已经记录。
+	if _, err := client.BotInfo(context.Background()); err == nil {
+		t.Fatal("缺少 botId 时应返回错误")
+	}
+
+	output := logs.String()
+	if !strings.Contains(output, "云湖接口返回") || !strings.Contains(output, "msgId") {
+		t.Errorf("日志中没有响应数据: %q", output)
 	}
 }
 
