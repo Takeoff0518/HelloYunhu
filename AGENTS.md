@@ -161,6 +161,8 @@ docs(design): 补充标识映射的表结构说明
 9. AstrBot 在 `get_group_member_info` 失败时会丢弃 `at` 消息段，导致群里 @ 机器人无法唤醒。这个接口即使没有权限也必须返回成功。
 10. 云湖每个接口的调用频率上限是每秒 10 次，超限返回错误码 1007。发送消息不自动重试，查询与上传可以退避重试。
 11. 云湖接口的响应外壳使用 `code` 与 `msg` 字段。**成功时 `code` 为 1**，业务错误为四位错误码（令牌非法 1003、频率超限 1007）；代码同时把 0 视为成功。实测记录见 `docs/design/protocol-mapping.md` 第 5 节，其余接口的 `data` 结构尚未确认，解析要容忍字段差异。
+12. 媒体地址按内容类型区分：图片事件直接给完整地址，文件拼 `https://chat-file.jwznb.com/`，视频拼 `https://chat-video1.jwznb.com/`，语音拼 `https://chat-audio1.jwznb.com/`。三类 CDN 都校验 `Referer: https://myapp.jwznb.com`，缺少时返回 403，因此接收方向统一先下载再以 `base64://` 交给框架。
+13. 撤回用 `POST /bot/recall`，参数为 `msgId`、`chatId` 与 `chatType`（取 `user` 或 `group`），实测返回成功。**平台不推送撤回通知**，无法向框架发出 `notice.message_recall`。
 
 ## 8. 当前未决事项
 
