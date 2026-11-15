@@ -3,7 +3,8 @@
 #
 # 全部配置项的说明在 M4 补齐的 docs/guides/configuration.md 中。
 
-# 日志设置。
+# 日志设置。日志同时写入终端与工作目录下的 logs/，文件名是当天日期，
+# 例如 2026-11-15.log，跨天自动切换，文件名不带前缀。
 log:
   # 级别：debug、info、warn、error。排查问题时设为 debug。
   level: info
@@ -12,8 +13,11 @@ log:
   # 为真时在 debug 级别输出收到的原始事件，只用于排查协议问题。
   # 原始事件包含消息正文与昵称，正常运行时应保持 false。
   raw_events: false
-  # 日志文件路径。设置后同时写入终端与文件，文件以追加方式打开，不做轮转。
-  # file: logs/helloyunhu.log
+  # 日志保留天数，30 表示保留最近三十天。-1 表示永不删除，0 不被接受。
+  keep_days: 30
+  # 为真时把前一天的日志压缩成 .log.gz，默认开启。
+  # 压缩后排查需要先解压，用 zcat 或解压工具打开即可。
+  compress: true
 
 # 持久化设置。标识映射与去重记录保存在这里。
 storage:

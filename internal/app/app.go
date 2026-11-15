@@ -13,7 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +24,9 @@ import (
 	"github.com/Takeoff0518/HelloYunhu/internal/storage"
 )
 
+// defaultLogDir 是日志文件的固定目录。
+const defaultLogDir = "logs"
+
 // Options 描述一次启动所需的输入。
 type Options struct {
 	// ConfigPath 是配置文件的路径。
@@ -33,6 +36,8 @@ type Options struct {
 	Commit  string
 	// LogOutput 是日志的写入目标，为空时写到标准错误。
 	LogOutput io.Writer
+	// LogDir 是日志目录，为空时使用 ./logs。测试用它指向临时目录。
+	LogDir string
 }
 
 // Run 加载配置、初始化日志并运行各实例，直到上下文结束。
@@ -45,7 +50,7 @@ func Run(ctx context.Context, opt Options) error {
 		return err
 	}
 
-	output, closeOutput, err := openLogOutput(cfg.Log, opt.LogOutput)
+	output, closeOutput, err := openLogOutput(opt.LogDir, cfg.Log, opt.LogOutput)
 	if err != nil {
 		return err
 	}
@@ -183,37 +188,35 @@ func pruneLoop(ctx context.Context, store *storage.Store, ttl time.Duration, log
 	}
 }
 
-// openLogOutput 按配置决定日志写到哪里。
+// openLogOutput 创建按天切分的日志输出。
 //
-// 未配置日志文件时只写终端；配置后同时写终端与文件，文件以追加方式打开，不做
-// 自动轮转，由使用者按需清理。返回的函数负责关闭文件。
-func openLogOutput(cfg config.Log, fallback io.Writer) (io.Writer, func(), error) {
+// 日志文件始终写入固定目录，文件名是当天日期，跨天自动切换，旧文件在后台压缩并
+// 按保留天数清理。终端与文件内容一致，排查问题可以直接取自文件。
+func openLogOutput(dir string, cfg config.Log, fallback io.Writer) (io.Writer, func(), error) {
 	terminal := fallback
 	if terminal == nil {
 		terminal = os.Stderr
 	}
-
-	if cfg.File == "" {
-		return terminal, func() {}, nil
+	if strings.TrimSpace(dir) == "" {
+		dir = defaultLogDir
 	}
 
-	path := filepath.Clean(cfg.File)
-	if dir := filepath.Dir(path); dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return nil, nil, fmt.Errorf("创建日志目录 %s: %w", dir, err)
+	writer, err := logging.NewRotatingWriter(logging.RotateOptions{
+		Dir:      dir,
+		KeepDays: cfg.KeepDays,
+		Compress: cfg.Compress,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	closeOutput := func() {
+		if err := writer.Close(); err != nil {
+			fmt.Fprintf(terminal, "关闭日志文件失败: %v\n", err)
 		}
 	}
 
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return nil, nil, fmt.Errorf("打开日志文件 %s: %w", path, err)
-	}
-
-	closeFile := func() {
-		_ = file.Close()
-	}
-
-	return io.MultiWriter(terminal, file), closeFile, nil
+	return io.MultiWriter(terminal, writer), closeOutput, nil
 }
 
 // newLogger 按配置创建日志实例。

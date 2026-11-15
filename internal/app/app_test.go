@@ -39,10 +39,10 @@ func wsURL(t *testing.T, server *httptest.Server, path string) string {
 }
 
 func TestOpenLogOutputWritesBoth(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "logs", "helloyunhu.log")
+	dir := t.TempDir()
 
 	var terminal bytes.Buffer
-	output, closeOutput, err := openLogOutput(config.Log{File: path}, &terminal)
+	output, closeOutput, err := openLogOutput(dir, config.Log{KeepDays: 30, Compress: true}, &terminal)
 	if err != nil {
 		t.Fatalf("打开日志输出失败: %v", err)
 	}
@@ -56,6 +56,8 @@ func TestOpenLogOutputWritesBoth(t *testing.T) {
 		t.Errorf("终端输出为 %q", terminal.String())
 	}
 
+	// 文件名是当天日期，不带前缀。
+	path := filepath.Join(dir, time.Now().Format("2006-01-02")+".log")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("读取日志文件失败: %v", err)
@@ -119,7 +121,7 @@ instances:
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err := Run(ctx, Options{ConfigPath: writeConfig(t, config), LogOutput: &logs})
+	err := Run(ctx, Options{ConfigPath: writeConfig(t, config), LogOutput: &logs, LogDir: t.TempDir()})
 	if err == nil {
 		t.Fatal("实例启动失败时应返回错误")
 	}
@@ -257,7 +259,7 @@ instances:
 	done := make(chan error, 1)
 
 	go func() {
-		done <- Run(ctx, Options{ConfigPath: writeConfig(t, config), Version: "test", LogOutput: &logs})
+		done <- Run(ctx, Options{ConfigPath: writeConfig(t, config), Version: "test", LogOutput: &logs, LogDir: t.TempDir()})
 	}()
 
 	// 握手应当带上正确的头部。
