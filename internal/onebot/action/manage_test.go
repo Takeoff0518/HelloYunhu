@@ -126,7 +126,8 @@ func TestDeleteMessageUnknownID(t *testing.T) {
 func TestSetGroupBan(t *testing.T) {
 	dispatcher, calls := newManageDispatcher(t)
 
-	params := json.RawMessage(`{"group_id":695367192,"user_id":2272345,"duration":600}`)
+	// 60 秒不在平台的档位里，换算为 600 秒。
+	params := json.RawMessage(`{"group_id":695367192,"user_id":2272345,"duration":60}`)
 	if _, err := dispatcher.Handle(context.Background(), "set_group_ban", params); err != nil {
 		t.Fatalf("禁言失败: %v", err)
 	}
@@ -140,6 +141,34 @@ func TestSetGroupBan(t *testing.T) {
 	}
 	if gag, ok := body["gag"].(float64); !ok || int(gag) != 600 {
 		t.Errorf("禁言时长为 %v", body["gag"])
+	}
+}
+
+func TestNormalizeBanDuration(t *testing.T) {
+	tests := []struct {
+		seconds int
+		want    int
+		exact   bool
+	}{
+		{seconds: 0, want: 0, exact: true},
+		{seconds: -1, want: -1, exact: true},
+		{seconds: -100, want: -1, exact: true},
+		{seconds: 1, want: 600, exact: false},
+		{seconds: 60, want: 600, exact: false},
+		{seconds: 600, want: 600, exact: true},
+		{seconds: 601, want: 3600, exact: false},
+		{seconds: 3600, want: 3600, exact: true},
+		{seconds: 21600, want: 21600, exact: true},
+		{seconds: 43200, want: 43200, exact: true},
+		{seconds: 86400, want: 43200, exact: false},
+	}
+
+	for _, tt := range tests {
+		got, exact := normalizeBanDuration(tt.seconds)
+		if got != tt.want || exact != tt.exact {
+			t.Errorf("%d 秒换算为 %d（exact=%v），期望 %d（exact=%v）",
+				tt.seconds, got, exact, tt.want, tt.exact)
+		}
 	}
 }
 

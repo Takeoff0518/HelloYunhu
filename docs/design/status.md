@@ -130,8 +130,9 @@ M2 范围之外的内容按开发计划留给 M3：撤回、禁言、踢人、�
 
 - `internal/yunhu/api/actions.go`：撤回（`/bot/recall`）、禁言（`/group/gag-member`）、移除成员（`/group/remove-member`）。撤回的 `chatType` 取 `user` 或 `group`，事件的私聊类型是 `bot`，调用前统一换算。
 - `internal/storage`：标识映射表新增 `chat_id` 与 `chat_type` 两列，收发的消息都把会话信息与标识一起落库，重启后仍可撤回；旧库在启动阶段按列名检查后用 `ALTER TABLE` 补齐。
-- `internal/onebot/action/manage.go`：`delete_msg`、`set_group_ban`、`set_group_kick` 三个接口。`set_group_kick` 的 `reject_add_request` 在云湖没有对应参数，记日志后忽略。
-- 测试：假服务校验三个接口的路径与请求体，覆盖私聊会话类型换算、未知消息返回 1404、缺参数返回 100。
+- `internal/onebot/action/manage.go`：`delete_msg`、`set_group_ban`、`set_group_kick` 三个接口。禁言时长按平台档位换算：只接受 600、3600、21600、43200 秒，0 解禁、-1 永久，其它值平台返回 1002；`set_group_kick` 的 `reject_add_request` 在云湖没有对应参数，记日志后忽略。
+- 测试：假服务校验三个接口的路径与请求体，覆盖私聊会话类型换算、禁言档位换算、未知消息返回 1404、缺参数返回 100。
+- 真实环境验证：撤回、踢人、禁言（600 秒档位）均确认生效；解禁与永久的客户端表现尚未逐一确认。
 - `internal/yunhu/api/limiter.go`：按 `yunhu.rate_limit` 匀速放行调用，默认每秒十次，等待受上下文控制；云湖返回 1007 时可用 `errors.Is(err, api.ErrRateLimited)` 判断。
 - `internal/diagnostics`：只读诊断服务，`GET /healthz` 返回 `ok`，`GET /status` 返回版本、启动时间、运行秒数、实例数量与两个计数，写请求返回 405。
 - `internal/app/metrics`：进程内的运行计数，事件转发与框架调用各记一次。
