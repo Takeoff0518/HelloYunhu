@@ -103,6 +103,12 @@ level=INFO msg=接口调用未成功 action=delete_msg retcode=1404 wording="消
 
 `retcode` 的 1404 表示接口或数据不存在，100 表示参数不合法，1500 表示上游实现出错。处理方式取决于 `action`：先对照[功能支持情况](compatibility.md)第 4 节确认该接口是否可用，再按 `wording` 里的说明检查参数。
 
+### 框架里显示的产品名是 gensokyo
+
+`get_version_info` 返回的 `app_name` 默认为 `HelloYunhu`。如果框架的日志、`/overflow` 这类状态命令显示的是 `gensokyo`，说明配置里开启了 `compat.gensokyo.enabled`。
+
+这不是接错了客户端，也不是程序改名。兼容模式为了让只认这个名字的客户端启用头像扩展，会主动自报该名字，详见[配置说明](configuration.md)第 9 节。不需要云湖头像时把 `enabled` 改成 `false` 即可恢复。
+
 ## 3. 事件接收
 
 ### 启动时退出，报错误码 1003
@@ -216,6 +222,14 @@ level=WARN msg=下载媒体失败，已退化为直接给出地址 kind=video er
 ```
 
 这时框架收到的是云湖的原始地址，而云湖的媒体 CDN 校验来源，框架直接请求会得到 403。处理办法是让对方发送更小的文件；上限目前是代码里的常量，调整需要改代码。
+
+### 头像显示成陌生人
+
+头像不经过本程序，OneBot v11 的 `sender` 里没有头像字段。框架与插件通常把整数标识当作 QQ 号去 qlogo 取图，云湖的数字标识在 QQ 上大多对应真实存在但无关的账号，因此显示成陌生人的头像。
+
+客户端是 Overflow 这类 mirai 客户端时，开启 `compat.gensokyo.enabled` 并重启可以让头像换成云湖里的真实头像。程序会在 `/avatar/<标识>` 上提供代理，取图时自行附带来源头。头像地址表只记录见过的人，刚启动时群里还没人发过消息，显示的是灰色占位图，等对方发一条消息即可恢复。
+
+AstrBot 与 NoneBot2 不调用 `get_avatar`，开启兼容模式对它们没有作用。
 
 ### 语音在客户端显示为文件
 

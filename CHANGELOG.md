@@ -1,5 +1,12 @@
 # 更新记录
 
+## 0.2.0 - 2026-11-16
+
+### 功能
+
+- 新增兼容模式 `compat.gensokyo`，默认关闭。开启后 `get_version_info` 自报 `gensokyo`，并提供非标准接口 `get_avatar` 与云湖头像代理，供 Overflow 这类只在协议端名字等于 `gensokyo` 时才取头像的 mirai 客户端显示云湖里的真实头像。代理在 `compat.gensokyo.listen` 上提供 `/avatar/<标识>`，取图时附带来源头，单张上限 1 MiB，缓存 6 小时，未知用户回退到灰色占位图。
+- 关闭时行为与 0.1.1 一致：`app_name` 为 `HelloYunhu`，`get_avatar` 返回 1404，头像代理不启动。
+
 ## 0.1.1 - 2026-11-16
 
 ### 修复
