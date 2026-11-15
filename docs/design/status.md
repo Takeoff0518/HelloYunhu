@@ -259,6 +259,9 @@ M2 范围之外的内容按开发计划留给 M3：撤回、禁言、踢人、�
 - 实现：新增 `internal/avatar`，含地址表（整数标识到云湖地址，容量 4096）与代理（`/avatar/<标识>`，只接受 GET 与 HEAD，校验域名、内容类型与 1 MiB 上限，缓存 6 小时，取不到时返回运行时生成的灰色占位图）。地址由事件转换与 `get_group_member_info`、`get_group_member_list` 写入；`get_avatar` 与程序名在 `internal/onebot/action`，开关在 `internal/config`。
 - 验证：单元测试覆盖配置默认值、按监听地址推导对外前缀、六类校验错误、地址表容量与空指针、代理的成功取图、上游 403、上游返回网页、超限、陌生域名、未知用户、HEAD 与路径解析、`get_avatar` 的开启与关闭、程序名切换、事件与关注事件的头像记录。`gofmt -l .` 无输出，`go vet ./...` 与 `go test ./...` 通过。
 - 端口被占用时，`Proxy.Run` 原本只记录日志、返回成功，进程会带着一个静默失效的代理继续跑。改成把监听错误交回启动流程，由「组件异常退出」记录并停止进程，同时补一条用真实占用端口验证的用例。
+- 灰度结果：Overflow 的插件 PatPat 报 `java.lang.NullPointerException: Cannot invoke "java.awt.image.BufferedImage.getWidth()" because "avatarImage" is null`。查证链路：`get_avatar` 的返回是正确的地址字符串，问题在下游下载后的解码。云湖头像实际是 webp，`chat-img.jwznb.com/…jpg` 会 301 跳到 `chat-img3.jwznb.com/….webp`，而 Java 的 `ImageIO` 没有 webp 解码器，读到 null。
+- 修正：代理在返回前转码，不透明转 JPEG（质量 85），带透明通道转 PNG。新增依赖 `golang.org/x/image`（纯 Go，无 cgo），已写进开发计划第 9 节。测试用的 1080×1080 头像从 36 KB 的 webp 转成 86 KB 的 JPEG，转 PNG 则是 961 KB，因此默认走 JPEG。
+- 转码的单元测试用 ffmpeg 生成的 8×8 webp 样本，覆盖不透明转 JPEG、无法解码时报错、透明判定与代理端到端转码。
 
 ### 提交历史
 
@@ -337,6 +340,7 @@ M2 范围之外的内容按开发计划留给 M3：撤回、禁言、踢人、�
 | `feat(compat):` | 增加可选的兼容模式与头像代理 |
 | `docs(design):` | 记录兼容模式的设计与验证 |
 | `fix(avatar):` | 端口被占用时把监听错误交回启动流程 |
+| `fix(avatar):` | 头像代理把 webp 转成 JPEG 或 PNG |
 
 ## 已确认的决定
 
@@ -465,4 +469,5 @@ M4 的三项验收：
 - 发行工作流尚未实际执行过，推送 `v0.1.1` 标签后需要确认三个压缩包、校验和与发行说明的生成结果。
 - 兼容模式依赖 Overflow 的实现细节：`app_name` 等于 `gensokyo` 才调用 `get_avatar`，接口返回的 `data` 是地址字符串。对方调整判断条件或改名后这套会失效，升级 Overflow 时需要重新核对源码。
 - 头像地址表只记录见过的用户。刚启动、对方还没发过消息时显示占位图；群成员列表没有权限的群，成员头像要等对方发言后才出现。
-- 云湖头像的真实内容类型是 `image/webp`，即使地址以 `.jpg` 结尾。代理按上游返回的类型透传，能否显示取决于客户端的解码能力，需要在 Overflow 里实测。
+- 转码后的 JPEG 比原 webp 大，1080×1080 约 86 KB；代理的图片缓存最多 512 条，极端情况下占用几十 MB 内存。真机长期运行后再看是否需要按字节数限制。
+- 代理不改变尺寸，返回的是云湖原图。需要缩略图的插件会自己缩放，这一点未在 Overflow 里逐项确认。

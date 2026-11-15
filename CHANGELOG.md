@@ -5,6 +5,7 @@
 ### 功能
 
 - 新增兼容模式 `compat.gensokyo`，默认关闭。开启后 `get_version_info` 自报 `gensokyo`，并提供非标准接口 `get_avatar` 与云湖头像代理，供 Overflow 这类只在协议端名字等于 `gensokyo` 时才取头像的 mirai 客户端显示云湖里的真实头像。代理在 `compat.gensokyo.listen` 上提供 `/avatar/<标识>`，取图时附带来源头，单张上限 1 MiB，缓存 6 小时，未知用户回退到灰色占位图。
+- 云湖头像的实际内容是 webp，地址却以 `.jpg` 结尾，而 Java 的 `ImageIO` 不认识 webp。代理在返回前统一转码：不透明的图转成 JPEG，带透明通道的转成 PNG。测试用的 1080×1080 头像由 36 KB 的 webp 转成 86 KB 的 JPEG。
 - 关闭时行为与 0.1.1 一致：`app_name` 为 `HelloYunhu`，`get_avatar` 返回 1404，头像代理不启动。
 
 ## 0.1.1 - 2026-11-16

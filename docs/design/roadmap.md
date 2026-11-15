@@ -200,6 +200,7 @@ HelloYunhu/
 | `gopkg.in/yaml.v3` | 配置文件解析 | YAML 是这类工具的习惯格式，库本身成熟 |
 | `modernc.org/sqlite` | SQLite 驱动 | 纯 Go 实现，不依赖 cgo，交叉编译方便 |
 | `golang.org/x/time/rate` | 令牌桶限流 | 官方扩展库，实现简单可靠 |
+| `golang.org/x/image` | 解码 webp 头像 | 纯 Go 解码器，不依赖 cgo；云湖头像实际是 webp，而 mirai 侧插件用 Java 的 ImageIO 读图，读不了 webp |
 
 其余使用标准库，包括 `log/slog`、`net/http`、`flag`、`database/sql` 与 `testing`。不引入 Web 框架和依赖注入框架，保持依赖数量可控。
 

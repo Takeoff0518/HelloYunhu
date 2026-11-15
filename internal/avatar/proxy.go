@@ -199,7 +199,19 @@ func (p *Proxy) fetch(ctx context.Context, source string) (imagePayload, error) 
 	}
 
 	mediaType := strings.TrimSpace(strings.Split(contentType, ";")[0])
-	return imagePayload{data: data, contentType: mediaType}, nil
+	result := imagePayload{data: data, contentType: mediaType}
+
+	// 云湖的头像实际是 webp，地址却以 .jpg 结尾。mirai 侧的插件大多用 Java 的
+	// ImageIO 读图，它不认识 webp，会拿到 null，因此在这里转成通用格式。
+	if strings.EqualFold(mediaType, "image/webp") {
+		converted, err := convertWebP(data)
+		if err != nil {
+			return imagePayload{}, err
+		}
+		return converted, nil
+	}
+
+	return result, nil
 }
 
 // hostAllowed 判断是否允许从这个域名取图。
