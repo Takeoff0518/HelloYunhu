@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Takeoff0518/HelloYunhu/internal/avatar"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/cache"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/identity"
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/media"
@@ -36,6 +37,8 @@ type Converter struct {
 	Media *media.Loader
 	// Nicknames 记录见过的昵称，发送 @ 时用来还原正文里要写的名字。
 	Nicknames *cache.Nicknames
+	// Avatars 记录见过的头像地址，兼容模式的头像代理据此取图，为空时不记录。
+	Avatars *avatar.Store
 	// Logger 为空时丢弃日志。
 	Logger *slog.Logger
 }
@@ -88,6 +91,8 @@ func (c *Converter) messageEvent(ctx context.Context, envelope model.Envelope) (
 	}
 	// 发送者的昵称是现成的，留着给发送 @ 用。
 	c.Nicknames.Set(payload.Sender.SenderID, payload.Sender.SenderNickname)
+	// 头像地址只出现在事件里，顺手记下，供兼容模式的头像代理使用。
+	c.Avatars.Put(userID, payload.Sender.SenderAvatarURL)
 
 	messageID, err := c.Messages.MessageID(ctx, payload.Message.MsgID)
 	if err != nil {

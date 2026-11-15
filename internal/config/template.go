@@ -62,6 +62,14 @@ capabilities:
   can_send_image: true
   can_send_record: false
 
+# 兼容设置，默认关闭。开启 gensokyo 会自报该名字并提供云湖头像代理，
+# 供 Overflow 这类 mirai 客户端显示真实头像。详见配置说明。
+compat:
+  gensokyo:
+    enabled: false
+    listen: 127.0.0.1:8082
+    base_url: ""
+
 diagnostics:
   enabled: false
   listen: 127.0.0.1:9090

@@ -87,6 +87,7 @@ func (d *Dispatcher) groupMemberInfo(ctx context.Context, params json.RawMessage
 		if member.UserID != strconv.FormatInt(value.UserID, 10) {
 			continue
 		}
+		d.rememberAvatar(member)
 		return memberPayload(value.GroupID, value.UserID, member), nil
 	}
 
@@ -116,6 +117,7 @@ func (d *Dispatcher) groupMemberList(ctx context.Context, params json.RawMessage
 		if userID <= 0 {
 			continue
 		}
+		d.rememberAvatar(member)
 		list = append(list, memberPayload(value.GroupID, userID, member))
 	}
 

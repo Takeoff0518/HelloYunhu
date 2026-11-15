@@ -73,6 +73,24 @@ capabilities:
   # 不会出现可点击播放的语音气泡。
   can_send_record: false
 
+# 兼容设置。默认关闭，关闭时程序的身份与能力与没有这些设置时完全一致。
+compat:
+  # 自报 Gensokyo 身份并提供头像扩展。
+  #
+  # Overflow 这类 mirai 客户端只在协议端自报 gensokyo 时才调用非标准的 get_avatar
+  # 取头像，其余情况一律拿整数标识当 QQ 号去 qlogo 取。接在云湖上会显示成陌生人的
+  # 头像，开启这一段之后显示的是云湖里的真实头像。
+  #
+  # 开启后同时做两件事：get_version_info 自报 gensokyo，并在下面这个地址上提供
+  # 头像代理。两件事缺一不可，因此只有一个开关。
+  gensokyo:
+    enabled: false
+    # 头像代理的监听地址。
+    listen: 127.0.0.1:8082
+    # 客户端访问头像时使用的前缀，只填协议、主机与端口。
+    # 留空时按 listen 推导；框架与本程序不在同一台机器时必须填写它可达的地址。
+    base_url: ""
+
 # 只读诊断接口。默认关闭，开启后提供 /healthz 与 /status 两个端点。
 diagnostics:
   enabled: false

@@ -34,6 +34,13 @@ const (
 	defaultRateLimit    = 10
 	defaultDiagnoseAddr = "127.0.0.1:9090"
 	defaultWebhookAddr  = "127.0.0.1:8081"
+	defaultAvatarAddr   = "127.0.0.1:8082"
+)
+
+// 向框架自报的程序名。兼容模式使用另一个项目的名字，见 Compat。
+const (
+	appNameDefault = "HelloYunhu"
+	appNameCompat  = "gensokyo"
 )
 
 // 事件接收方式。
@@ -65,6 +72,8 @@ type Config struct {
 	Yunhu Yunhu `yaml:"yunhu"`
 	// Capabilities 是向框架声明的能力。
 	Capabilities Capabilities `yaml:"capabilities"`
+	// Compat 是给非标准客户端准备的兼容设置。
+	Compat Compat `yaml:"compat"`
 	// Diagnostics 是只读诊断接口的设置。
 	Diagnostics Diagnostics `yaml:"diagnostics"`
 }
@@ -163,6 +172,35 @@ type Capabilities struct {
 	CanSendRecord bool `yaml:"can_send_record"`
 }
 
+// Compat 是与非标准客户端配合的设置。
+//
+// 这些开关会让程序以别的项目身份出现，只在不这么做时客户端取不到数据的情况下才
+// 使用。默认全部关闭，关闭时程序的行为与没有这些能力时完全一致。
+type Compat struct {
+	// Gensokyo 是兼容 Gensokyo 扩展的设置。
+	Gensokyo Gensokyo `yaml:"gensokyo"`
+}
+
+// Gensokyo 是自报 Gensokyo 身份并提供头像扩展的设置。
+//
+// Overflow 这类客户端只在协议端自报 gensokyo 时才调用非标准的 get_avatar 取头像，
+// 其余情况一律拿整数标识当 QQ 号去 qlogo 取，接在非 QQ 平台上会显示成陌生人的
+// 头像。开启之后程序自报这个名字，并启动头像代理供客户端下载云湖头像。
+//
+// 两件事必须同时生效：只自报名字而没有代理，客户端拿到的地址打不开；只开代理而
+// 不自报名字，客户端根本不会来要地址。因此配置里只有一个开关。
+type Gensokyo struct {
+	// Enabled 是兼容模式的唯一开关。
+	Enabled bool `yaml:"enabled"`
+	// Listen 是头像代理的监听地址。
+	Listen string `yaml:"listen"`
+	// BaseURL 是客户端访问头像时使用的前缀，只含协议、主机与端口。
+	//
+	// 留空时按 Listen 推导。框架与本程序不在同一台机器时，必须填写框架能访问到的
+	// 地址，否则客户端会把 127.0.0.1 解析到它自己。
+	BaseURL string `yaml:"base_url"`
+}
+
 // UnmarshalYAML 按字段是否出现决定是否覆盖默认值。
 //
 // 布尔值的零值与「没有配置」无法区分，因此先用指针接住，未出现的字段保留默认值。
@@ -247,6 +285,11 @@ func Default() *Config {
 		Capabilities: Capabilities{
 			CanSendImage: true,
 		},
+		Compat: Compat{
+			Gensokyo: Gensokyo{
+				Listen: defaultAvatarAddr,
+			},
+		},
 		Diagnostics: Diagnostics{
 			Listen: defaultDiagnoseAddr,
 		},
@@ -306,6 +349,34 @@ func (c *Config) normalize() {
 			c.OneBot[index].Name = fmt.Sprintf("onebot-%d", index+1)
 		}
 	}
+
+	if c.Compat.Gensokyo.Enabled {
+		if strings.TrimSpace(c.Compat.Gensokyo.Listen) == "" {
+			c.Compat.Gensokyo.Listen = defaultAvatarAddr
+		}
+		if strings.TrimSpace(c.Compat.Gensokyo.BaseURL) == "" {
+			c.Compat.Gensokyo.BaseURL = deriveBaseURL(c.Compat.Gensokyo.Listen)
+		}
+	}
+}
+
+// AppName 返回向框架自报的程序名。
+//
+// 兼容模式开启时自报 gensokyo，供只认这个名字的客户端启用头像扩展。这个名字是
+// 兼容用的，不代表本项目的身份。
+func (c *Config) AppName() string {
+	if c.Compat.Gensokyo.Enabled {
+		return appNameCompat
+	}
+	return appNameDefault
+}
+
+// AvatarBaseURL 返回头像代理的对外前缀，兼容模式关闭时为空。
+func (c *Config) AvatarBaseURL() string {
+	if !c.Compat.Gensokyo.Enabled {
+		return ""
+	}
+	return strings.TrimRight(c.Compat.Gensokyo.BaseURL, "/")
 }
 
 // Validate 校验配置，并把发现的问题一次性全部返回。
@@ -346,8 +417,77 @@ func (c *Config) Validate() error {
 	problems = append(problems, validateWebSocketURL("yunhu.subscribe_url", c.Yunhu.SubscribeURL)...)
 
 	problems = append(problems, c.validateOneBot()...)
+	problems = append(problems, c.validateCompat()...)
 
 	return errors.Join(problems...)
+}
+
+// validateCompat 校验兼容模式的设置。
+//
+// 开关为假时忽略取值，但写法本身仍然校验，避免开关打开后才暴露拼写问题。
+func (c *Config) validateCompat() []error {
+	var problems []error
+
+	compat := c.Compat.Gensokyo
+	listen := strings.TrimSpace(compat.Listen)
+	if listen != "" {
+		if _, _, err := net.SplitHostPort(listen); err != nil {
+			problems = append(problems, fmt.Errorf(
+				"compat.gensokyo.listen: %q 不是合法的监听地址，例如 127.0.0.1:8082", compat.Listen))
+		}
+	} else if compat.Enabled {
+		problems = append(problems, errors.New("compat.gensokyo.listen: 开启兼容模式时不能为空"))
+	}
+
+	baseURL := strings.TrimSpace(compat.BaseURL)
+	if baseURL != "" {
+		problems = append(problems, validateBaseURL("compat.gensokyo.base_url", baseURL)...)
+	} else if compat.Enabled {
+		problems = append(problems, errors.New(
+			"compat.gensokyo.base_url: 开启兼容模式时不能为空，且无法从监听地址推导"))
+	}
+
+	return problems
+}
+
+// deriveBaseURL 按监听地址推导客户端访问头像时使用的前缀。
+//
+// 监听在全部网卡上时取回环地址：能启动代理的机器上通常也能访问 127.0.0.1，而
+// 0.0.0.0 对客户端不是一个可用的目标。
+func deriveBaseURL(listen string) string {
+	host, port, err := net.SplitHostPort(strings.TrimSpace(listen))
+	if err != nil {
+		return ""
+	}
+	switch host {
+	case "", "0.0.0.0", "::", "[::]":
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, port)
+}
+
+// validateBaseURL 校验头像代理的对外前缀。
+//
+// 前缀只允许协议、主机与端口，路径由程序固定拼成 /avatar/<标识>，因此带路径的
+// 写法会被拒绝，而不是被默默拼接成一个奇怪的地址。
+func validateBaseURL(field, raw string) []error {
+	problems := validateHTTPURL(field, raw)
+	if len(problems) > 0 {
+		return problems
+	}
+
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return []error{fmt.Errorf("%s: 无法解析地址 %q: %w", field, raw, err)}
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return []error{fmt.Errorf(
+			"%s: 只填写协议、主机与端口，不要带路径，头像地址由程序拼成 %s/avatar/<标识>", field, strings.TrimRight(raw, "/"))}
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return []error{fmt.Errorf("%s: 不能带查询串或片段", field)}
+	}
+	return nil
 }
 
 // validateReceive 校验事件接收方式的设置。
