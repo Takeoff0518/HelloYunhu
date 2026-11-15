@@ -257,7 +257,7 @@ M2 的关键验收项：
 - Go：1.27.4，安装在 `D:\golang`，`GOTOOLCHAIN` 为 `auto`。
 - 模块代理：本机无法直接连接 `sum.golang.org`，下载依赖时需要设置 `GOPROXY=https://goproxy.cn,direct` 与 `GOSUMDB=sum.golang.google.cn`。这只影响本机，不属于项目配置。
 - 未安装 GNU make 与 golangci-lint 可执行文件。lint 已通过 `go run` 验证，`Makefile` 尚未实际执行。
-- Git 2.37.0，当前分支 `main`；`main` 已推送到 GitHub，本地领先 `origin/main` 二十个提交，尚未推送。所有功能分支已合并并删除。
+- Git 2.37.0，当前分支 `main`；`main` 已推送到 GitHub，本地领先 `origin/main` 二十一个提交，尚未推送。所有功能分支已合并并删除。
 
 ## 恢复上下文的步骤
 
