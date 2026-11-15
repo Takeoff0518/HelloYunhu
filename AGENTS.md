@@ -160,10 +160,11 @@ docs(design): 补充标识映射的表结构说明
 8. AstrBot 要求事件的 `message` 是数组，`sender` 必须存在，`message_id` 必须能转换为整数。
 9. AstrBot 在 `get_group_member_info` 失败时会丢弃 `at` 消息段，导致群里 @ 机器人无法唤醒。这个接口即使没有权限也必须返回成功。
 10. 云湖每个接口的调用频率上限是每秒 10 次，超限返回错误码 1007。发送消息不自动重试，查询与上传可以退避重试。
+11. 云湖接口的响应外壳使用 `code` 与 `msg` 字段，`code` 非 0 表示业务错误，例如令牌非法是 1003。实测记录见 `docs/design/protocol-mapping.md` 第 5 节。成功响应的 `data` 结构尚未全部确认，解析要容忍字段差异。
 
 ## 8. 当前未决事项
 
-没有阻塞开发的未决事项。协议层还有 14 项待实测内容，见 `docs/research/feasibility-report.md` 第 11 节，在 M1 与 M2 期间逐项验证。
+没有阻塞开发的未决事项。协议层仍有待实测内容，见 `docs/research/feasibility-report.md` 第 11 节与 `docs/design/protocol-mapping.md` 第 6 节，在真实环境测试期间逐项验证。
 
 ## 9. 环境
 

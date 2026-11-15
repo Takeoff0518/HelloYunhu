@@ -14,6 +14,7 @@
 
 ## 使用文档
 
+- [测试指南](guides/testing.md)：配置、自检、启动顺序、用 NoneBot2 跑第一轮测试与采集现场信息。
 - 快速开始（`guides/quickstart.md`）：安装、配置与首次接入，M4 阶段编写。
 - 配置说明（`guides/configuration.md`）：全部配置项，M4 阶段编写。
 - 常见问题（`guides/troubleshooting.md`）：排查方法，M4 阶段编写。
