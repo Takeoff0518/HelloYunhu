@@ -96,6 +96,7 @@ func TestSendMessageResultID(t *testing.T) {
 		raw  string
 		want string
 	}{
+		{name: "实测 messageInfo 结构", raw: `{"messageInfo":{"msgId":"ddd","recvId":"695367192","recvType":"group"}}`, want: "ddd"},
 		{name: "msgId 字段", raw: `{"msgId":"aaa"}`, want: "aaa"},
 		{name: "messageId 字段", raw: `{"messageId":"bbb"}`, want: "bbb"},
 		{name: "字符串数据", raw: `"ccc"`, want: "ccc"},

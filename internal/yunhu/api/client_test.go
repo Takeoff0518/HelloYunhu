@@ -226,7 +226,8 @@ func TestSendMessage(t *testing.T) {
 			t.Errorf("内容为 %#v", req.Content)
 		}
 
-		_, _ = io.WriteString(w, `{"code":0,"data":{"msgId":"0f1e2d3c4b5a69788796a5b4c3d2e1f0"}}`)
+		// 实测的返回结构：消息标识在 messageInfo 里。
+		_, _ = io.WriteString(w, `{"code":1,"data":{"messageInfo":{"msgId":"0f1e2d3c4b5a69788796a5b4c3d2e1f0","recvId":"123456","recvType":"group"}}}`)
 	})
 
 	result, err := client.SendMessage(context.Background(), model.SendMessageRequest{

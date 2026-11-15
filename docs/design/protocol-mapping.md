@@ -111,16 +111,17 @@
 | `message.receive.normal` 事件 | `senderUserLevel` 为 `"owner"` 这类字符串，`senderType` 为 `"user"`；`instructionId` 与 `commandId` 位于 `message` 内且为数字 | 角色是字符串而不是等级数字，指令标识在消息体内 |
 | 群聊文本消息 | `chat.chatType` 为 `group`，`msgId` 为 32 位十六进制，`contentType` 为 `text`，`content` 只含 `text` | 与调研结论一致，`at` 数组只在需要时出现 |
 | 群聊图片消息 | `content` 含 `imageUrl`、`imageName`、`etag`、`imageWidth`、`imageHeight` | 图片内容字段可用，`imageKey` 只在上传后的场景出现 |
+| `POST /bot/send` 成功 | `{"messageInfo":{"msgId":"…","recvId":"…","recvType":"…"}}` | 消息标识在 `messageInfo.msgId`，不在顶层 |
 
-代码同时把 `code` 为 0 与 1 视为成功，避免不同接口编码不一致时误判。成功响应的 `data` 结构只对 `/bot/info` 确认过，其余接口仍按常见写法解析。
+代码同时把 `code` 为 0 与 1 视为成功，避免不同接口编码不一致时误判。成功响应的 `data` 结构只对 `/bot/info` 与 `/bot/send` 确认过，其余接口仍按常见写法解析。
 
 ## 6. 尚未确认的行为
 
 下面几项依赖真实云湖环境验证，代码对多种写法都做了兼容，实测后需要回来收敛：
 
-1. 除 `/bot/info` 之外各接口成功响应的 `data` 结构与字段名。
-2. 发送接口返回的消息标识位置，当前同时接受 `msgId` 与 `messageId`，也接受直接返回字符串。
-3. 群列表与群成员列表的包装字段，当前接受直接数组与 `list`、`items`、`members`、`groups`、`data`。
-4. 群成员列表的字段名与角色取值，消息事件里的角色已确认为 `owner` 这类字符串。
-5. 图片下载是否需要来源信息，当前直接请求，失败时退化为地址。
-6. 文件与视频发送所需的字段组合，当前按 `fileKey` 加文件名与体积、`videoKey` 组织。
+1. 除 `/bot/info` 与 `/bot/send` 之外各接口成功响应的 `data` 结构与字段名。
+2. 群列表与群成员列表的包装字段，当前接受直接数组与 `list`、`items`、`members`、`groups`、`data`。
+3. 群成员列表的字段名与角色取值，消息事件里的角色已确认为 `owner` 这类字符串。
+4. 图片下载是否需要来源信息，当前直接请求，失败时退化为地址。
+5. 文件与视频发送所需的字段组合，当前按 `fileKey` 加文件名与体积、`videoKey` 组织。
+6. 撤回、编辑与禁言接口的请求参数与返回结构。

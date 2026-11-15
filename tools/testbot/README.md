@@ -35,9 +35,11 @@ Copy-Item .env.example .env
 | 插件 | 作用 |
 |---|---|
 | `plugins/echo.py` | 回复收到消息的纯文本，默认对所有消息生效 |
-| `plugins/diagnostics.py` | 收到 `/diag` 时回复 `self_id`、`message_id`、`group_id`、消息段类型等字段 |
+| `plugins/diagnostics.py` | `/diag` 回复 `self_id`、`message_id`、`group_id`、消息段类型；`/quote` 引用当前消息再回复，用于验证 `parentId` |
 
 `/diag` 的输出用于确认映射结果，例如群里 @ 机器人时 `segments` 应当包含 `at`，发图片时应当包含 `image`。
+
+`/quote` 用于验证引用链路：框架会把引用段转成 `get_msg` 与带 `parentId` 的发送请求，云湖侧应当显示为引用回复。
 
 ## 扩展方式
 
