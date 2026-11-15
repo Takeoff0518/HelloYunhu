@@ -60,9 +60,8 @@ func (c *Client) upload(ctx context.Context, path, op, field, name string, data 
 	if len(data) > limit {
 		return nil, fmt.Errorf("%s: 媒体体积 %d 字节超过上限 %d 字节", op, len(data), limit)
 	}
-	if name == "" {
-		name = "upload.bin"
-	}
+
+	name = fileName(name, data)
 
 	endpoint, err := c.endpoint(path, nil)
 	if err != nil {
