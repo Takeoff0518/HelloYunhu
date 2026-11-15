@@ -32,7 +32,7 @@ const eventBufferSize = 64
 func runInstance(ctx context.Context, instanceCfg config.Instance, cfg *config.Config, logger *slog.Logger, messages identity.MessageStore) error {
 	log := logger.With("instance", instanceCfg.Name)
 
-	apiClient, err := api.New(api.Config{BaseURL: cfg.Yunhu.APIBase, Token: instanceCfg.Token})
+	apiClient, err := api.New(api.Config{BaseURL: cfg.Yunhu.APIBase, Token: instanceCfg.Token, Logger: log})
 	if err != nil {
 		return fmt.Errorf("创建接口客户端: %w", err)
 	}

@@ -13,11 +13,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/Takeoff0518/HelloYunhu/internal/logging"
 	"github.com/Takeoff0518/HelloYunhu/internal/yunhu/model"
 )
 
@@ -35,6 +37,8 @@ type Config struct {
 	Token string
 	// HTTPClient 为空时使用带超时的默认客户端。
 	HTTPClient *http.Client
+	// Logger 为空时丢弃日志。debug 级别会输出成功响应的原始数据。
+	Logger *slog.Logger
 }
 
 // Client 是云湖接口客户端。
@@ -42,6 +46,7 @@ type Client struct {
 	baseURL string
 	token   string
 	http    *http.Client
+	logger  *slog.Logger
 }
 
 // New 创建接口客户端。
@@ -68,7 +73,12 @@ func New(cfg Config) (*Client, error) {
 		httpClient = &http.Client{Timeout: defaultTimeout}
 	}
 
-	return &Client{baseURL: baseURL, token: token, http: httpClient}, nil
+	logger := cfg.Logger
+	if logger == nil {
+		logger = logging.Discard()
+	}
+
+	return &Client{baseURL: baseURL, token: token, http: httpClient, logger: logger}, nil
 }
 
 // APIError 是云湖返回的业务错误。调用方可以通过错误码区分限流与其它失败。
@@ -251,6 +261,11 @@ func (c *Client) execute(request *http.Request, op string) (json.RawMessage, err
 	}
 	if !isSuccessCode(parsed.Code) {
 		return nil, &APIError{Code: parsed.Code, Message: parsed.message(), Op: op, Body: excerpt(raw)}
+	}
+
+	// 成功时在 debug 级别输出原始数据，便于确认字段名。
+	if len(parsed.Data) > 0 {
+		c.logger.Debug("云湖接口返回", "op", op, "data", excerpt(parsed.Data))
 	}
 
 	return parsed.Data, nil
