@@ -643,3 +643,131 @@ func TestGetFriendList(t *testing.T) {
 		t.Errorf("响应为 %s，期望 []", encoded)
 	}
 }
+
+// forwardNodes 构造一组用于测试的转发节点，第二个节点里嵌套一层。
+func forwardNodes(t *testing.T) []map[string]any {
+	t.Helper()
+
+	return []map[string]any{
+		{"type": "node", "data": map[string]any{
+			"user_id":  10001,
+			"nickname": "小明",
+			"content": []map[string]any{
+				{"type": "text", "data": map[string]any{"text": "第一条"}},
+			},
+		}},
+		{"type": "node", "data": map[string]any{
+			"user_id":  10002,
+			"nickname": "小红",
+			"content": []map[string]any{
+				{"type": "forward", "data": map[string]any{
+					"content": []map[string]any{
+						{"type": "node", "data": map[string]any{
+							"user_id":  10003,
+							"nickname": "小刚",
+							"content": []map[string]any{
+								{"type": "text", "data": map[string]any{"text": "嵌套内容"}},
+							},
+						}},
+					},
+				}},
+			},
+		}},
+	}
+}
+
+// TestSendGroupForwardMsg 校验扩展接口把转发展开成文本发送。
+func TestSendGroupForwardMsg(t *testing.T) {
+	dispatcher, recorder := newDispatcher(t)
+
+	params, err := json.Marshal(map[string]any{"group_id": 20001, "messages": forwardNodes(t)})
+	if err != nil {
+		t.Fatalf("编码参数失败: %v", err)
+	}
+
+	data, err := dispatcher.Handle(context.Background(), "send_group_forward_msg", params)
+	if err != nil {
+		t.Fatalf("处理失败: %v", err)
+	}
+	if data.(map[string]any)["message_id"] != int64(1) {
+		t.Errorf("消息标识为 %v", data)
+	}
+
+	request := recorder.last(t)
+	if request.ContentType != yunhumodel.ContentTypeText {
+		t.Errorf("内容类型为 %q", request.ContentType)
+	}
+	text, _ := request.Content.(map[string]any)["text"].(string)
+	for _, want := range []string{"1. 小明: 第一条", "2. 小红:", "  └ 1. 小刚: 嵌套内容"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("正文中缺少 %q，实际为:\n%s", want, text)
+		}
+	}
+}
+
+// TestSendForwardAsMessageSegment 校验消息段形式的转发走同一条展开逻辑。
+func TestSendForwardAsMessageSegment(t *testing.T) {
+	dispatcher, recorder := newDispatcher(t)
+
+	params, err := json.Marshal(map[string]any{"group_id": 20001, "message": forwardNodes(t)})
+	if err != nil {
+		t.Fatalf("编码参数失败: %v", err)
+	}
+
+	if _, err := dispatcher.Handle(context.Background(), "send_group_msg", params); err != nil {
+		t.Fatalf("处理失败: %v", err)
+	}
+
+	text, _ := recorder.last(t).Content.(map[string]any)["text"].(string)
+	if !strings.Contains(text, "嵌套内容") {
+		t.Errorf("正文中没有嵌套内容，实际为:\n%s", text)
+	}
+}
+
+// TestSendForwardInfersRecipient 校验 send_forward_msg 按标识推断接收方。
+func TestSendForwardInfersRecipient(t *testing.T) {
+	dispatcher, recorder := newDispatcher(t)
+
+	params, err := json.Marshal(map[string]any{"user_id": 10001, "messages": forwardNodes(t)})
+	if err != nil {
+		t.Fatalf("编码参数失败: %v", err)
+	}
+
+	if _, err := dispatcher.Handle(context.Background(), "send_forward_msg", params); err != nil {
+		t.Fatalf("处理失败: %v", err)
+	}
+
+	request := recorder.last(t)
+	if request.RecvType != yunhumodel.RecvTypeUser || request.RecvID != "10001" {
+		t.Errorf("接收方为 %s/%s", request.RecvType, request.RecvID)
+	}
+}
+
+// TestSendForwardBadParams 校验缺参数与错误节点被拒绝。
+func TestSendForwardBadParams(t *testing.T) {
+	dispatcher, _ := newDispatcher(t)
+
+	cases := []struct {
+		name   string
+		params string
+	}{
+		{name: "缺少接收方", params: `{"messages":[{"type":"node","data":{"content":[]}}]}`},
+		{name: "缺少 messages", params: `{"group_id":20001}`},
+		{name: "messages 为空", params: `{"group_id":20001,"messages":[]}`},
+		{name: "节点类型不对", params: `{"group_id":20001,"messages":[{"type":"text","data":{"text":"你好"}}]}`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := dispatcher.Handle(context.Background(), "send_forward_msg", json.RawMessage(tc.params))
+			if err == nil {
+				t.Fatal("应返回参数错误")
+			}
+
+			var actionErr *obmodel.ActionError
+			if !errors.As(err, &actionErr) || actionErr.Retcode != obmodel.RetcodeBadRequest {
+				t.Errorf("错误为 %v，期望 100", err)
+			}
+		})
+	}
+}

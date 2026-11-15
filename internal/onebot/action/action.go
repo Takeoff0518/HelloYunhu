@@ -65,6 +65,12 @@ func (d *Dispatcher) Handle(ctx context.Context, name string, params json.RawMes
 		return d.sendPrivateMessage(ctx, params)
 	case "send_msg":
 		return d.sendMessage(ctx, params)
+	case "send_group_forward_msg":
+		return d.sendForward(ctx, name, params, yunhumodel.RecvTypeGroup)
+	case "send_private_forward_msg":
+		return d.sendForward(ctx, name, params, yunhumodel.RecvTypeUser)
+	case "send_forward_msg":
+		return d.sendForward(ctx, name, params, "")
 	case "get_login_info":
 		return map[string]any{"user_id": d.SelfID, "nickname": d.Nickname}, nil
 	case "get_group_info":

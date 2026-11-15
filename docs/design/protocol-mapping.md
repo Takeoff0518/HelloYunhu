@@ -41,6 +41,7 @@
 | `send_group_msg` | `POST /bot/send`，`recvType=group` | 已实现，支持文本、@、引用、图片、文件与视频 |
 | `send_private_msg` | `POST /bot/send`，`recvType=user` | 已实现 |
 | `send_msg` | 按 `message_type` 决定接收方类型 | 已实现 |
+| `send_group_forward_msg`、`send_private_forward_msg`、`send_forward_msg` | 展开成文本后走 `POST /bot/send` | 已实现，降级为文本 |
 | `get_login_info` | 启动时查询的 `/bot/info` 结果 | 已实现 |
 | `get_status` | 本地状态，固定在线 | 已实现 |
 | `get_version_info` | 常量，`app_name` 为 HelloYunhu | 已实现 |
