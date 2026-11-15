@@ -25,9 +25,61 @@ func TestIncomingText(t *testing.T) {
 	if !ok || at.QQ != 10002 {
 		t.Errorf("@ 段为 %#v", segments[0].Data)
 	}
+	// 提及文字已从正文剪掉，剩下的部分才能被框架当成命令。
 	text, ok := segments[1].Data.(obmodel.TextData)
-	if !ok || text.Text != "@机器人 你好" {
+	if !ok || text.Text != "你好" {
 		t.Errorf("文本段为 %#v", segments[1].Data)
+	}
+}
+
+func TestIncomingTextMentionPosition(t *testing.T) {
+	// 真实事件的正文形如「@机器人​/m2check」，提及后面会跟一个零宽空格。
+	content := &model.TextContent{Text: "请看 @某人 这条", At: []string{"10003"}}
+
+	segments := IncomingText(content)
+	want := []string{"text", "at", "text"}
+	if len(segments) != len(want) {
+		t.Fatalf("消息段数量为 %d，期望 %d", len(segments), len(want))
+	}
+	for index, kind := range want {
+		if segments[index].Type != kind {
+			t.Errorf("第 %d 个消息段为 %q，期望 %q", index, segments[index].Type, kind)
+		}
+	}
+	if text, _ := segments[0].Data.(obmodel.TextData); text.Text != "请看 " {
+		t.Errorf("前置正文为 %q", text.Text)
+	}
+	if text, _ := segments[2].Data.(obmodel.TextData); text.Text != "这条" {
+		t.Errorf("后置正文为 %q", text.Text)
+	}
+}
+
+func TestIncomingTextKeepsTextWhenCountMismatch(t *testing.T) {
+	// 正文里的 @ 数量与 at 数组对不上时，退回成 @ 段在前、正文原样保留。
+	content := &model.TextContent{Text: "邮箱 a@b.com 与 @某人", At: []string{"10003"}}
+
+	segments := IncomingText(content)
+	if len(segments) != 2 || segments[0].Type != "at" || segments[1].Type != "text" {
+		t.Fatalf("消息段为 %#v", segments)
+	}
+	if text, _ := segments[1].Data.(obmodel.TextData); text.Text != "邮箱 a@b.com 与 @某人" {
+		t.Errorf("正文为 %q", text.Text)
+	}
+}
+
+func TestMentionNames(t *testing.T) {
+	content := &model.TextContent{Text: "@甲 与 @乙 都在", At: []string{"1", "2"}}
+
+	pairs := MentionNames(content)
+	if len(pairs) != 2 {
+		t.Fatalf("昵称数量为 %d", len(pairs))
+	}
+	if pairs[0] != [2]string{"1", "甲"} || pairs[1] != [2]string{"2", "乙"} {
+		t.Errorf("昵称为 %#v", pairs)
+	}
+
+	if got := MentionNames(&model.TextContent{Text: "没有提及", At: []string{"1"}}); got != nil {
+		t.Errorf("没有提及时应返回空，实际为 %#v", got)
 	}
 }
 
