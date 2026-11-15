@@ -3,6 +3,34 @@
 #
 # 全部配置项的说明在 M4 补齐的 docs/guides/configuration.md 中。
 
+# 云湖机器人本身。一个进程服务一个机器人，多个机器人请开多个进程。
+bot:
+  # 云湖机器人令牌，从机器人后台获取。
+  token: "请替换为真实的机器人令牌"
+
+# 事件从哪里进来。
+receive:
+  # websocket 用订阅连接（默认），webhook 用 HTTP 推送，both 同时使用。
+  mode: websocket
+  # 只有 mode 含 webhook 时才需要这一段。
+  webhook:
+    # 监听地址。需要云湖能访问到，通常配合反向代理或内网穿透。
+    listen: 127.0.0.1:8081
+    # 写在推送地址的路径里，至少 24 个字符。云湖的推送没有签名，
+    # 这个令牌就是唯一的凭据，泄露等于任何人可以伪造事件。
+    token: ""
+    # 只接受这些来源网段，留空表示不限制。云湖的出口网段需要自行确认。
+    allowed_ips: []
+
+# 我们对外提供的 OneBot 连接，至少一个。每个连接对应一个框架，
+# 事件会广播给所有连接，动作调用共用同一个云湖客户端。
+onebot:
+  - name: astrbot
+    # 框架监听的反向 WebSocket 地址。
+    url: ws://127.0.0.1:6199/ws
+    # 框架侧配置的访问令牌，没有设置就留空。
+    access_token: ""
+
 # 日志设置。日志同时写入终端与工作目录下的 logs/，文件名是当天日期，
 # 例如 2026-11-15.log，跨天自动切换，文件名不带前缀。
 log:
@@ -19,7 +47,7 @@ log:
   # 压缩后排查需要先解压，用 zcat 或解压工具打开即可。
   compress: true
 
-# 持久化设置。标识映射与去重记录保存在这里。
+# 持久化设置。标识映射保存在这里。
 storage:
   # SQLite 文件路径，所在目录不存在时自动创建。
   path: data/helloyunhu.db
@@ -30,7 +58,7 @@ storage:
 yunhu:
   api_base: https://chat-go.jwzhd.com/open-apis/v1
   subscribe_url: wss://ws.jwzhd.com/subscribe
-  # 每个实例每秒最多发起的接口调用次数，0 表示不限流。
+  # 每秒最多发起的接口调用次数，0 表示不限流。
   # 平台上限是每秒十次，默认留有余量；发送消息不做重试，这里只做匀速。
   rate_limit: 10
 
@@ -50,15 +78,3 @@ diagnostics:
   enabled: false
   # 只监听本机，不要暴露到公网。
   listen: 127.0.0.1:9090
-
-# 机器人实例。一个进程可以同时运行多个实例，实例之间互不影响。
-instances:
-  - # 实例名称，只用于日志与诊断，必须唯一。
-    name: main
-    # 云湖机器人的令牌，从机器人后台获取。下面是占位文本，请替换为真实令牌。
-    token: "请替换为真实的机器人令牌"
-    onebot:
-      # 机器人框架监听的地址，使用反向 WebSocket。
-      url: ws://127.0.0.1:6199/ws
-      # 框架侧配置的访问令牌，没有设置就留空。
-      access_token: ""

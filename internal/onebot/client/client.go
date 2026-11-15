@@ -168,6 +168,14 @@ func (c *Client) SendEvent(event any) error {
 	return c.writeJSON(event)
 }
 
+// Connected 报告当前是否已建立连接。
+func (c *Client) Connected() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.conn != nil
+}
+
 // Probe 建立一次连接后立即关闭，用于自检。
 //
 // 只验证握手与头部是否正确，不发送事件，因此不会让框架登记成可用连接。

@@ -83,7 +83,8 @@ func Run(ctx context.Context, opt Options) error {
 		"version", opt.Version,
 		"commit", opt.Commit,
 		"config", opt.ConfigPath,
-		"instances", len(cfg.Instances),
+		"receive_mode", cfg.Receive.Mode,
+		"onebot_connections", len(cfg.OneBot),
 	)
 
 	// 声明与实现不一致时给一次提示：框架会按声明选择发送方式。
@@ -107,6 +108,7 @@ func Run(ctx context.Context, opt Options) error {
 	// 运行计数供只读诊断接口使用，所有实例共用。
 	counters := metrics.New()
 	startedAt := time.Now()
+	status := &botStatus{}
 
 	var (
 		wg      sync.WaitGroup
@@ -125,7 +127,7 @@ func Run(ctx context.Context, opt Options) error {
 		server := diagnostics.New(diagnostics.Options{
 			Listen:   cfg.Diagnostics.Listen,
 			Logger:   logger,
-			Snapshot: snapshotFunc(opt.Version, startedAt, len(cfg.Instances), counters),
+			Snapshot: snapshotFunc(opt.Version, startedAt, status, counters),
 		})
 		wg.Add(1)
 		go func() {
@@ -136,19 +138,17 @@ func Run(ctx context.Context, opt Options) error {
 		}()
 	}
 
-	for _, instanceCfg := range cfg.Instances {
-		wg.Add(1)
-		go func(instanceCfg config.Instance) {
-			defer wg.Done()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 
-			if err := runInstance(ctx, instanceCfg, cfg, logger, store, counters); err != nil {
-				errOnce.Do(func() {
-					runErr = fmt.Errorf("实例 %s: %w", instanceCfg.Name, err)
-				})
-				cancel()
-			}
-		}(instanceCfg)
-	}
+		if err := runBot(ctx, cfg, logger, store, counters, status); err != nil {
+			errOnce.Do(func() {
+				runErr = err
+			})
+			cancel()
+		}
+	}()
 
 	<-ctx.Done()
 	wg.Wait()
@@ -162,13 +162,22 @@ func Run(ctx context.Context, opt Options) error {
 }
 
 // snapshotFunc 构造诊断接口使用的状态查询。
-func snapshotFunc(version string, startedAt time.Time, instances int, counters *metrics.Metrics) func() diagnostics.Snapshot {
+func snapshotFunc(version string, startedAt time.Time, status *botStatus, counters *metrics.Metrics) func() diagnostics.Snapshot {
 	return func() diagnostics.Snapshot {
+		botID, nickname, states := status.snapshot()
+
+		connections := make([]diagnostics.Connection, 0, len(states))
+		for _, state := range states {
+			connections = append(connections, diagnostics.Connection{Name: state.Name, Online: state.Online})
+		}
+
 		return diagnostics.Snapshot{
 			Version:        version,
 			StartedAt:      startedAt,
 			UptimeSeconds:  int64(time.Since(startedAt).Seconds()),
-			Instances:      instances,
+			BotID:          botID,
+			Nickname:       nickname,
+			Connections:    connections,
 			EventsReceived: counters.EventsReceived(),
 			ActionsHandled: counters.ActionsHandled(),
 		}

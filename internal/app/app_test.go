@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -107,35 +109,34 @@ func TestRunMissingConfig(t *testing.T) {
 }
 
 func TestRunInvalidConfig(t *testing.T) {
-	path := writeConfig(t, "instances: []\n")
+	path := writeConfig(t, "bot:\n  token: t\nonebot: []\n")
 	var logs bytes.Buffer
 
 	err := Run(context.Background(), Options{ConfigPath: path, LogOutput: &logs})
 	if err == nil {
 		t.Fatal("配置不合法时应返回错误")
 	}
-	if !strings.Contains(err.Error(), "至少需要配置一个机器人实例") {
+	if !strings.Contains(err.Error(), "至少需要配置一个框架连接") {
 		t.Errorf("错误信息应包含具体原因，实际为: %v", err)
 	}
 }
 
-func TestRunInstanceFailure(t *testing.T) {
+func TestRunBotFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"code":401,"msg":"令牌无效"}`))
 	}))
 	defer server.Close()
 
 	config := `
+bot:
+  token: bad-token
 storage:
   path: ` + filepath.ToSlash(filepath.Join(t.TempDir(), "test.db")) + `
 yunhu:
   api_base: ` + server.URL + `/open-apis/v1
   subscribe_url: ws://127.0.0.1:1/subscribe
-instances:
-  - name: main
-    token: bad-token
-    onebot:
-      url: ws://127.0.0.1:1/ws
+onebot:
+  - url: ws://127.0.0.1:1/ws
 `
 	var logs bytes.Buffer
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -143,9 +144,9 @@ instances:
 
 	err := Run(ctx, Options{ConfigPath: writeConfig(t, config), LogOutput: &logs, LogDir: t.TempDir()})
 	if err == nil {
-		t.Fatal("实例启动失败时应返回错误")
+		t.Fatal("机器人信息获取失败时应返回错误")
 	}
-	for _, want := range []string{"实例 main", "获取机器人信息", "令牌无效"} {
+	for _, want := range []string{"获取机器人信息", "令牌无效"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("错误信息中缺少 %q，实际为: %v", want, err)
 		}
@@ -262,16 +263,16 @@ func TestRunEndToEnd(t *testing.T) {
 log:
   level: debug
   format: text
+bot:
+  token: test-token
 storage:
   path: ` + filepath.ToSlash(filepath.Join(t.TempDir(), "test.db")) + `
 yunhu:
   api_base: ` + yunhuServer.URL + `/open-apis/v1
   subscribe_url: ` + wsURL(t, yunhuServer, "/subscribe") + `
-instances:
-  - name: main
-    token: test-token
-    onebot:
-      url: ` + wsURL(t, frameworkServer, "/ws") + `
+onebot:
+  - name: astrbot
+    url: ` + wsURL(t, frameworkServer, "/ws") + `
 `
 
 	var logs bytes.Buffer
@@ -379,3 +380,148 @@ instances:
 		t.Fatal("Run 没有在取消后返回")
 	}
 }
+
+// freeAddr 返回一个当前空闲的本地监听地址。
+func freeAddr(t *testing.T) string {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("申请端口失败: %v", err)
+	}
+	addr := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("释放端口失败: %v", err)
+	}
+	return addr
+}
+
+// TestRunWebhookDeliversAndDeduplicates 校验 Webhook 接收与 both 模式下的去重。
+func TestRunWebhookDeliversAndDeduplicates(t *testing.T) {
+	const token = "7c1f0a9e5b2d48c3a6f1e0d9b8c7a6f5"
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"code":0,"data":{"botId":"1001","nickname":"机器人"}}`)
+	}))
+	defer apiServer.Close()
+
+	// 订阅连接只需要保持在线，事件全部由 Webhook 投递。
+	subscribeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := webhookUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() {
+			_ = conn.Close()
+		}()
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	defer subscribeServer.Close()
+
+	events := make(chan map[string]any, 8)
+	frameworkServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := webhookUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() {
+			_ = conn.Close()
+		}()
+
+		for {
+			_, payload, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			var frame map[string]any
+			if err := json.Unmarshal(payload, &frame); err != nil {
+				return
+			}
+			if frame["post_type"] == "message" {
+				events <- frame
+			}
+		}
+	}))
+	defer frameworkServer.Close()
+
+	listen := freeAddr(t)
+	config := `
+bot:
+  token: test-token
+receive:
+  mode: both
+  webhook:
+    listen: ` + listen + `
+    token: ` + token + `
+storage:
+  path: ` + filepath.ToSlash(filepath.Join(t.TempDir(), "test.db")) + `
+yunhu:
+  api_base: ` + apiServer.URL + `/open-apis/v1
+  subscribe_url: ` + wsURL(t, subscribeServer, "/subscribe") + `
+onebot:
+  - url: ` + wsURL(t, frameworkServer, "/ws") + `
+`
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(ctx, Options{ConfigPath: writeConfig(t, config), LogOutput: io.Discard, LogDir: t.TempDir()})
+	}()
+
+	// 等待框架连接建立，否则 Webhook 投递的事件会因连接未就绪被丢弃。
+	time.Sleep(300 * time.Millisecond)
+
+	target := "http://" + listen + "/yunhu/" + token
+	deliver := func() int {
+		response, err := http.Post(target, "application/json", strings.NewReader(groupMessageEvent))
+		if err != nil {
+			t.Fatalf("投递事件失败: %v", err)
+		}
+		defer func() {
+			_ = response.Body.Close()
+		}()
+		return response.StatusCode
+	}
+
+	if code := deliver(); code != http.StatusOK {
+		t.Fatalf("Webhook 返回 %d", code)
+	}
+
+	select {
+	case frame := <-events:
+		if frame["event_id"] != nil {
+			t.Logf("事件标识为 %v", frame["event_id"])
+		}
+	case <-time.After(5 * time.Second):
+		cancel()
+		t.Fatal("框架没有收到 Webhook 投递的事件")
+	}
+
+	// 同一条事件再投递一次，应当被去重，不会产生第二条消息。
+	if code := deliver(); code != http.StatusOK {
+		t.Fatalf("重复投递返回 %d", code)
+	}
+	select {
+	case frame := <-events:
+		cancel()
+		t.Fatalf("重复事件不应再次转发，收到 %v", frame["message_id"])
+	case <-time.After(500 * time.Millisecond):
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run 返回错误: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run 没有在取消后返回")
+	}
+}
+
+// webhookUpgrader 是测试里共用的 WebSocket 升级器。
+var webhookUpgrader = websocket.Upgrader{}

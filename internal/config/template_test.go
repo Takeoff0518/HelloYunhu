@@ -29,7 +29,7 @@ func TestWriteTemplate(t *testing.T) {
 	if err := yaml.Unmarshal(raw, &parsed); err != nil {
 		t.Fatalf("模板不是合法 YAML: %v", err)
 	}
-	for _, key := range []string{"log", "storage", "yunhu", "capabilities", "instances"} {
+	for _, key := range []string{"bot", "receive", "onebot", "log", "storage", "yunhu", "capabilities"} {
 		if _, ok := parsed[key]; !ok {
 			t.Errorf("模板缺少配置段 %q", key)
 		}

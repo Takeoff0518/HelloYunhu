@@ -39,10 +39,10 @@ type CheckResult struct {
 	Detail string
 }
 
-// Selftest 检查配置与各实例的连接，返回逐项结果。
+// Selftest 检查配置与连接，返回逐项结果。
 //
 // 配置不合法时只返回配置检查一项，因为后续检查都需要配置。连接检查会真实发起
-// 请求：查询机器人信息、建立一次订阅连接、向框架握手各一次。
+// 请求：查询机器人信息、建立一次订阅连接、向每个框架握手各一次。
 func Selftest(ctx context.Context, opt Options) []CheckResult {
 	cfg, err := config.Load(opt.ConfigPath)
 	if err != nil {
@@ -52,58 +52,66 @@ func Selftest(ctx context.Context, opt Options) []CheckResult {
 	results := []CheckResult{{
 		Name:   "配置检查",
 		Status: StatusPassed,
-		Detail: fmt.Sprintf("%s，共 %d 个实例", opt.ConfigPath, len(cfg.Instances)),
+		Detail: fmt.Sprintf("%s，接收方式 %s，框架连接 %d 个", opt.ConfigPath, cfg.Receive.Mode, len(cfg.OneBot)),
 	}}
 
-	for _, instance := range cfg.Instances {
-		results = append(results, selftestInstance(ctx, instance, cfg)...)
-	}
-
-	return results
-}
-
-// selftestInstance 检查一个实例的三条连接。
-func selftestInstance(ctx context.Context, instance config.Instance, cfg *config.Config) []CheckResult {
-	prefix := "实例 " + instance.Name + " · "
-
-	apiClient, err := api.New(api.Config{BaseURL: cfg.Yunhu.APIBase, Token: instance.Token})
+	apiClient, err := api.New(api.Config{BaseURL: cfg.Yunhu.APIBase, Token: cfg.Bot.Token})
 	if err != nil {
-		return []CheckResult{{Name: prefix + "接口客户端", Status: StatusFailed, Detail: err.Error()}}
+		results = append(results, CheckResult{Name: "接口客户端", Status: StatusFailed, Detail: err.Error()})
+		return results
 	}
-
-	var results []CheckResult
 
 	info, infoErr := probeBotInfo(ctx, apiClient)
 	if infoErr != nil {
-		results = append(results, CheckResult{Name: prefix + "机器人信息", Status: StatusFailed, Detail: infoErr.Error()})
+		results = append(results, CheckResult{Name: "机器人信息", Status: StatusFailed, Detail: infoErr.Error()})
 	} else {
 		results = append(results, CheckResult{
-			Name:   prefix + "机器人信息",
+			Name:   "机器人信息",
 			Status: StatusPassed,
 			Detail: fmt.Sprintf("botId=%s 昵称=%s", info.BotID, info.Nickname),
 		})
 	}
 
-	if err := probeSubscribe(ctx, instance, cfg); err != nil {
-		results = append(results, CheckResult{Name: prefix + "订阅连接", Status: StatusFailed, Detail: err.Error()})
+	if cfg.Receive.UsesWebsocket() {
+		if err := probeSubscribe(ctx, cfg); err != nil {
+			results = append(results, CheckResult{Name: "订阅连接", Status: StatusFailed, Detail: err.Error()})
+		} else {
+			results = append(results, CheckResult{Name: "订阅连接", Status: StatusPassed, Detail: "握手成功"})
+		}
 	} else {
-		results = append(results, CheckResult{Name: prefix + "订阅连接", Status: StatusPassed, Detail: "握手成功"})
+		results = append(results, CheckResult{
+			Name:   "订阅连接",
+			Status: StatusSkipped,
+			Detail: "当前接收方式不使用订阅连接",
+		})
+	}
+
+	if cfg.Receive.UsesWebhook() {
+		// Webhook 只能由平台主动推送，自检无法代替。
+		results = append(results, CheckResult{
+			Name:   "Webhook 接收",
+			Status: StatusSkipped,
+			Detail: "需要平台推送一条事件才能验证，地址为 /yunhu/<token>",
+		})
 	}
 
 	// 框架握手需要机器人标识，取不到时无法构造 X-Self-ID。
 	if infoErr != nil {
 		results = append(results, CheckResult{
-			Name:   prefix + "框架握手",
+			Name:   "框架握手",
 			Status: StatusSkipped,
 			Detail: "需要先取得机器人信息",
 		})
 		return results
 	}
 
-	if err := probeFramework(ctx, instance, info.BotID); err != nil {
-		results = append(results, CheckResult{Name: prefix + "框架握手", Status: StatusFailed, Detail: err.Error()})
-	} else {
-		results = append(results, CheckResult{Name: prefix + "框架握手", Status: StatusPassed, Detail: "握手成功"})
+	for _, conn := range cfg.OneBot {
+		name := "框架握手 " + conn.Name
+		if err := probeFramework(ctx, conn, info.BotID); err != nil {
+			results = append(results, CheckResult{Name: name, Status: StatusFailed, Detail: err.Error()})
+		} else {
+			results = append(results, CheckResult{Name: name, Status: StatusPassed, Detail: "握手成功"})
+		}
 	}
 
 	return results
@@ -118,9 +126,9 @@ func probeBotInfo(ctx context.Context, client *api.Client) (*model.BotInfo, erro
 }
 
 // probeSubscribe 建立一次订阅连接后立即关闭。
-func probeSubscribe(ctx context.Context, instance config.Instance, cfg *config.Config) error {
+func probeSubscribe(ctx context.Context, cfg *config.Config) error {
 	subscriber, err := subscribe.New(subscribe.Options{
-		Config: subscribe.Config{URL: cfg.Yunhu.SubscribeURL, Token: instance.Token},
+		Config: subscribe.Config{URL: cfg.Yunhu.SubscribeURL, Token: cfg.Bot.Token},
 	})
 	if err != nil {
 		return err
@@ -133,13 +141,13 @@ func probeSubscribe(ctx context.Context, instance config.Instance, cfg *config.C
 }
 
 // probeFramework 向框架发起一次握手后立即关闭。
-func probeFramework(ctx context.Context, instance config.Instance, botID string) error {
+func probeFramework(ctx context.Context, conn config.OneBot, botID string) error {
 	selfID, _ := identity.ParseID(botID)
 
 	client, err := onebotclient.New(onebotclient.Options{
 		Config: onebotclient.Config{
-			URL:         instance.OneBot.URL,
-			AccessToken: instance.OneBot.AccessToken,
+			URL:         conn.URL,
+			AccessToken: conn.AccessToken,
 			SelfID:      selfID,
 		},
 		Handler: func(context.Context, string, json.RawMessage) (any, error) { return nil, nil },

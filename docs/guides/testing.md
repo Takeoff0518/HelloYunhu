@@ -7,21 +7,24 @@
 在工作目录直接运行一次程序，它会生成 `config.yaml` 并提示要改哪两项，然后退出。也可以复制 `examples/config.yaml` 自己改。最少需要填两项：云湖机器人令牌，以及框架监听的地址。
 
 ```yaml
+bot:
+  token: "云湖机器人令牌"
+
+receive:
+  # 默认用订阅连接；要用 HTTP 推送改成 webhook 或 both。
+  mode: websocket
+
+onebot:
+  # 一个连接对应一个框架，可以写多个，事件会广播给所有连接。
+  - name: nonebot
+    url: ws://127.0.0.1:8080/onebot/v11/ws
+    access_token: ""
+
 log:
   level: debug
   format: text
   # 排查协议问题时设为 true，会输出收到的原始事件。
   raw_events: true
-  # 日志保留 30 天，前一天的日志压缩成 .gz。
-  keep_days: 30
-  compress: true
-
-instances:
-  - name: main
-    token: "云湖机器人令牌"
-    onebot:
-      url: ws://127.0.0.1:8080/onebot/v11/ws
-      access_token: ""
 ```
 
 `config.yaml` 与 `data/` 已经在 `.gitignore` 中排除，不会被提交。令牌泄露时到机器人后台重置。日志始终写入工作目录下的 `logs/`，文件名是当天日期，目录已在忽略列表里，但日志文件可能包含群标识与昵称，分享前先检查。
@@ -34,15 +37,15 @@ instances:
 helloyunhu selftest -config config.yaml
 ```
 
-自检会真实发起三次连接：查询机器人信息、建立一次订阅连接、向框架握手。每项输出通过、失败或跳过，失败时退出码为 1。
+自检会真实发起连接：查询机器人信息、建立一次订阅连接、向每个框架握手。每项输出通过、失败或跳过，失败时退出码为 1。
 
 正常情况下应当看到：
 
 ```
-[通过] 配置检查: config.yaml，共 1 个实例
-[通过] 实例 main · 机器人信息: botId=… 昵称=…
-[通过] 实例 main · 订阅连接: 握手成功
-[通过] 实例 main · 框架握手: 握手成功
+[通过] 配置检查: config.yaml，接收方式 websocket，框架连接 1 个
+[通过] 机器人信息: botId=… 昵称=…
+[通过] 订阅连接: 握手成功
+[通过] 框架握手 nonebot: 握手成功
 ```
 
 常见失败与含义：
@@ -56,6 +59,37 @@ helloyunhu selftest -config config.yaml
 
 框架握手需要机器人标识，所以机器人信息失败时这一项会标记为跳过。
 
+## 2.1 用 Webhook 收事件（可选）
+
+把 `receive.mode` 改成 `webhook` 或 `both`，并在 `receive.webhook` 里填监听地址与至少 24 个字符的令牌：
+
+```yaml
+receive:
+  mode: webhook
+  webhook:
+    listen: 0.0.0.0:8081
+    token: "7c1f0a9e5b2d48c3a6f1e0d9b8c7a6f5"
+    allowed_ips: []
+```
+
+启动后把 `http://<主机>:8081/yunhu/<token>` 填进云湖控制台的订阅 URL。没有公网地址时，可以先用 `curl` 在本机模拟一次推送：
+
+```
+curl -X POST http://127.0.0.1:8081/yunhu/7c1f0a9e5b2d48c3a6f1e0d9b8c7a6f5 \
+  -H 'Content-Type: application/json' \
+  -d '{"version":"1.0","header":{"eventId":"test-1","eventType":"message.receive.normal","eventTime":1761936492340},"event":{}}'
+```
+
+返回 200 表示已接收。这条事件没有消息正文，框架侧收到后转换会失败并记录一条警告，属于预期行为，重点是确认路径、令牌与来源限制都通过了。
+
+| 返回码 | 含义 |
+|---|---|
+| 200 | 已接收，事件进入处理流程 |
+| 404 | 路径或令牌不对 |
+| 403 | 来源不在 `allowed_ips` 里 |
+| 413 | 请求体超过 1 MiB |
+| 503 | 事件通道已满，稍后重试 |
+
 ## 3. 启动顺序
 
 先启动机器人框架，再启动 HelloYunhu。HelloYunhu 是主动连接的一方，顺序反了会按 1 秒到 30 秒的退避不断重连，直到框架起来。
@@ -68,7 +102,7 @@ nb run
 helloyunhu run -config config.yaml
 ```
 
-启动后日志里应当依次出现：程序启动、装载机器人实例、已连接机器人框架、已连接云湖事件订阅。
+启动后日志里应当依次出现：程序启动、已连接云湖机器人、已连接机器人框架，以及 Webhook 接收已启动（启用时）。
 
 ## 4. 启动测试机器人
 

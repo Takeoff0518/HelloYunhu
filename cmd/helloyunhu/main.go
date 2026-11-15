@@ -102,8 +102,8 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	if created {
 		fmt.Fprintf(stdout, "已生成配置文件 %s，本次不启动。\n", *configPath)
 		fmt.Fprint(stdout, "请填写以下两项后再次运行：\n")
-		fmt.Fprint(stdout, "  instances[0].token        云湖机器人令牌\n")
-		fmt.Fprint(stdout, "  instances[0].onebot.url   机器人框架的 WebSocket 地址\n")
+		fmt.Fprint(stdout, "  bot.token          云湖机器人令牌\n")
+		fmt.Fprint(stdout, "  onebot[0].url      机器人框架的 WebSocket 地址\n")
 		return exitOK
 	}
 

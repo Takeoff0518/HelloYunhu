@@ -15,6 +15,14 @@ import (
 	"time"
 )
 
+// Connection 是一条框架连接的在线状态。
+type Connection struct {
+	// Name 是连接名称。
+	Name string `json:"name"`
+	// Online 表示当前是否已建立连接。
+	Online bool `json:"online"`
+}
+
 // Snapshot 是一次状态查询的结果。
 type Snapshot struct {
 	// Version 是构建版本。
@@ -23,8 +31,12 @@ type Snapshot struct {
 	StartedAt time.Time `json:"started_at"`
 	// UptimeSeconds 是已运行的秒数。
 	UptimeSeconds int64 `json:"uptime_seconds"`
-	// Instances 是配置的实例数量。
-	Instances int `json:"instances"`
+	// BotID 是云湖机器人标识，启动查询成功前为空。
+	BotID string `json:"bot_id,omitempty"`
+	// Nickname 是机器人昵称。
+	Nickname string `json:"nickname,omitempty"`
+	// Connections 是各框架连接的状态。
+	Connections []Connection `json:"connections"`
 	// EventsReceived 是已处理的事件数量。
 	EventsReceived int64 `json:"events_received"`
 	// ActionsHandled 是已处理的框架调用数量。
