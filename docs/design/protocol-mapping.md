@@ -69,10 +69,21 @@
 |---|---|---|
 | `text` | `at` 段与 `text` 段 | 正文里的「@昵称」剪掉后换成同一位置的 `at` 段，剩下的正文才能被框架当成命令；两边数量对不上时保留原文，@ 段放在正文之前 |
 | `image` | `image` 段 | 先下载再以 `base64://` 给出，失败时给出网络地址 |
-| `file` | `file` 段 | 带地址与文件名，不下载正文 |
-| `video` | `video` 段 | 带地址 |
-| `audio` | `record` 段 | 带地址，云湖没有语音发送能力 |
+| `file` | `file` 段 | 带文件名与体积，内容先下载再以 `base64://` 给出 |
+| `video` | `video` 段 | 同上，10 MB 级别的视频也能内联 |
+| `audio` | `record` 段 | 同上，云湖没有语音发送能力 |
 | 其它 | 文本占位 | `[暂不支持的消息类型: x]` |
+
+媒体地址分三类，事件里的字段名与拼接规则不同：
+
+| 内容类型 | 事件字段 | 地址来源 |
+|---|---|---|
+| `image` | `imageUrl` | 已是完整地址 |
+| `file` | `fileUrl` | 相对路径，拼 `https://chat-file.jwznb.com/` |
+| `video` | `videoUrl` | 相对路径，拼 `https://chat-video1.jwznb.com/` |
+| `audio` | `audioUrl` | 相对路径，拼 `https://chat-audio1.jwznb.com/` |
+
+三类媒体都受 CDN 来源限制，缺少 `Referer: https://myapp.jwznb.com` 时返回 403。框架侧通常不带这个头，因此转换程序先在本进程下载，再以 `base64://` 交给框架；下载失败时退回地址，并在日志里留下记录。
 
 发送方向：
 
@@ -131,20 +142,27 @@
 | @ 的三种正文写法 | 正文写 `@昵称` 加空格时显示为正常提及；只给 `at` 数组不写正文时客户端不显示提及；昵称后只加零宽空格时昵称与后文粘在一起 | 正文必须自己写 `@昵称` 并留一个空格，`content.at` 负责携带标识 |
 | 群里 @机器人 发 `/diag` | 事件正文是「@乐正绫TwinkLing 零宽空格 `/diag`」，`content.at` 为 `["11464576"]`；剪掉提及文字后框架收到 `at` 段与 `/diag` 文本，命令正常命中 | 提及文字与 `at` 数组一一对应，顺序一致 |
 | 框架侧的提及处理 | NoneBot2 会把消息开头指向自己的 `at` 段落消费掉用于判断「被 @」，之后消息里只剩正文 | 诊断命令看到的 `segments` 为 `text` 属于正常现象，不代表 `at` 段丢失 |
+| 群聊文件消息 | `content` 含 `fileName`、`fileUrl`、`etag`、`fileSize`，`fileUrl` 是 `c839….txt` 这样的相对路径 | 需要拼 `https://chat-file.jwznb.com/`，该地址带来源头返回 200，不带返回 403 |
+| 群聊视频消息 | `content` 含 `etag`、`videoUrl`、`videoDuration`，`videoUrl` 是 `845f….mp4` | 拼 `https://chat-video1.jwznb.com/`，10.6 MB 的视频带来源头返回 200，不带返回 403，支持 `Range` 分段 |
+| 群聊语音消息 | `content` 含 `etag`、`audioUrl`、`audioDuration`，`audioUrl` 是 `1ef1….wav` | 拼 `https://chat-audio1.jwznb.com/`，带来源头返回 200，类型 `audio/x-wav` |
+| `POST /bot/recall` | `{"msgId":"…","chatId":"…","chatType":"group"}` 返回 `{"code":1,"msg":"success"}`，机器人自己的消息与他人消息都能撤回 | 撤回接口可用，`chatType` 取 `user` 或 `group` |
+| 撤回后的订阅事件 | 撤回成功后订阅通道没有任何事件，日志里既无消息事件也无未知类型事件 | 云湖不推送撤回通知，只能做主动撤回，无法给框架发 `notice.message_recall` |
+| `GET /bot/messages` | 参数 `chat-id` 与 `chat-type=group` 时返回 `{"list":[],"total":0}`，`chat-type=bot` 被拒绝 | 接口存在但当前账号取不到历史，参数语义待确认，暂不使用 |
 
 代码同时把 `code` 为 0 与 1 视为成功，避免不同接口编码不一致时误判。`data` 结构已确认的接口有 `/bot/info`、`/bot/send`、`/bot/groups`、`/group/info` 与三个上传接口；`/group/members` 的字段名仍未确认，因为当前机器人没有该权限。
 
-媒体下载另有两条实测结论：
+媒体下载另有实测结论：
 
 | 场景 | 观测 | 结论 |
 |---|---|---|
 | 下载 `chat-img.jwznb.com` 的图片 | 不带来源头时返回 403 | CDN 校验来源 |
 | 附带 `Referer: https://myapp.jwznb.com` 后下载 | 可正常获取 | 社区适配器使用同一来源值，代码对 `*.jwznb.com` 与 `*.jwzhd.com` 自动附带 |
+| 文件、视频、语音三类 CDN | 都在 `*.jwznb.com` 下，缺少来源头统一返回 403 | 三条来源规则一致，代码统一附带来源头后下载 |
 
 ## 6. 尚未确认的行为
 
 下面几项依赖真实云湖环境继续验证，代码对多种写法都做了兼容，实测后需要回来收敛：
 
 1. `/group/members` 的字段名与角色取值。接口本身需要机器人在群后台获得成员列表权限，当前测试机器人没有授权，只确认了未授权时的错误码与降级行为。
-2. 接收方向的私聊、文件与视频事件。私聊与 @ 唤醒已在群里验证，文件与视频事件仍需要真人账号发一次。
-3. 撤回、编辑与禁言接口的请求参数与返回结构，属于 M3。
+2. 撤回后的通知、编辑消息与禁言接口的请求参数与返回结构，属于 M3 范围。撤回接口本身已验证可用，但平台不推送撤回通知。
+3. `/bot/messages` 的参数语义与返回内容，当前账号取不到数据。
