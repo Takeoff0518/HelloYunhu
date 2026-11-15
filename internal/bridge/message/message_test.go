@@ -85,7 +85,7 @@ func segment(t *testing.T, typ string, data any) obmodel.InSegment {
 
 func TestSplitTextAtReply(t *testing.T) {
 	parts, err := Split([]obmodel.InSegment{
-		segment(t, "reply", obmodel.ReplyData{ID: 42}),
+		segment(t, "reply", obmodel.ReplyData{ID: obmodel.IDValue(42)}),
 		segment(t, "at", obmodel.AtData{QQ: 10001}),
 		segment(t, "text", obmodel.TextData{Text: "你好"}),
 	})
@@ -107,9 +107,23 @@ func TestSplitTextAtReply(t *testing.T) {
 	}
 }
 
+func TestSplitReplyIDAsString(t *testing.T) {
+	// NoneBot2 会把引用段的 id 序列化成字符串。
+	parts, err := Split([]obmodel.InSegment{
+		{Type: "reply", Data: json.RawMessage(`{"id":"42"}`)},
+		segment(t, "text", obmodel.TextData{Text: "引用"}),
+	})
+	if err != nil {
+		t.Fatalf("拆分失败: %v", err)
+	}
+	if parts[0].ReplyMessageID != 42 {
+		t.Errorf("引用目标为 %d，期望 42", parts[0].ReplyMessageID)
+	}
+}
+
 func TestSplitSplitsAroundImage(t *testing.T) {
 	parts, err := Split([]obmodel.InSegment{
-		segment(t, "reply", obmodel.ReplyData{ID: 7}),
+		segment(t, "reply", obmodel.ReplyData{ID: obmodel.IDValue(7)}),
 		segment(t, "text", obmodel.TextData{Text: "看图"}),
 		segment(t, "image", obmodel.ImageData{File: "https://example.com/a.png", Name: "a.png"}),
 		segment(t, "text", obmodel.TextData{Text: "好看吗"}),

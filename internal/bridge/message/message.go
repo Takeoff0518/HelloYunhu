@@ -174,7 +174,7 @@ func Split(segments []obmodel.InSegment) ([]Part, error) {
 			}
 			// 引用的目标只挂在当前这条消息上，避免一次发送多段时每段都带引用。
 			if current.ReplyMessageID == 0 {
-				current.ReplyMessageID = data.ID
+				current.ReplyMessageID = data.ID.Int64()
 			}
 
 		case "image", "file", "video", "record":
