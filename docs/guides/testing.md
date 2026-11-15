@@ -103,6 +103,7 @@ Copy-Item .env.example .env
 | 私聊 | 在私聊里发一句话 | 框架收到 `message.private`，回复可达 |
 | 自身消息 | 机器人自己发言 | 框架不应收到机器人自己的消息 |
 | 诊断命令 | 群里或私聊发 `/diag` | 回复 `self_id`、`message_id`、`group_id` 与消息段类型 |
+| 引用回复 | 发 `/quote` | 云湖侧显示为引用回复，日志里的发送请求带 `parentId` |
 
 `/diag` 用于确认映射结果：群里 @ 机器人时 `segments` 应包含 `at`，发图片时应包含 `image`，`message_id` 应当是可转换为整数的值。
 
