@@ -32,7 +32,9 @@ internal/bridge/identity 标识映射
 internal/bridge/message 消息段与云湖消息的转换
 internal/bridge/event   云湖事件到 OneBot 事件的转换
 internal/bridge/dedup   两种接收方式同时启用时的事件去重
-internal/avatar         头像地址表与头像代理，只在兼容模式下启用
+internal/avatar         头像地址表与头像处理
+internal/proxy          代理服务：媒体转发与端口注册
+internal/proxypath      代理路径前缀，服务与事件转换共用
 ```
 
 依赖方向是单向的：`cmd` 依赖 `app`，`app` 依赖其余所有包；`bridge` 同时依赖两侧的模型，两侧的模型互不依赖；`yunhu` 与 `onebot` 之间没有直接依赖。这样云湖侧调整只影响 `yunhu` 与 `bridge`，OneBot 侧兼容性调整只影响 `onebot` 与 `bridge`。
@@ -54,7 +56,7 @@ internal/avatar         头像地址表与头像代理，只在兼容模式下�
 | 订阅连接 | 读事件、重连、写入内部通道（仅 websocket 或 both 模式） |
 | 订阅事件投递 | 去重后写入事件通道，保持背压 |
 | Webhook 接收 | HTTP 服务，校验令牌与来源，去重后投递（仅 webhook 或 both 模式） |
-| 头像代理 | HTTP 服务，按标识取云湖头像并回给客户端（仅兼容模式） |
+| 代理服务 | HTTP 服务，转发云湖媒体与头像（仅 `proxy.enabled` 为真时） |
 | 框架连接 | 每条连接一个协程：读接口调用、写事件与响应、重连 |
 | 事件转发 | 转换事件、广播给所有框架连接 |
 
@@ -143,20 +145,22 @@ internal/avatar         头像地址表与头像代理，只在兼容模式下�
 
 这套切分依赖单进程独占日志目录。多个实例在一个进程里由同一个写者输出，没有问题；多个进程写同一个目录会互相覆盖，属于不支持的使用方式。解释器的时区取进程所在环境的本地时区，跨时区变更需要重启进程。
 
-## 12. 兼容模式
+## 12. 代理服务与兼容模式
 
-`compat.gensokyo.enabled` 为真时，进程多做两件事，并且由同一个开关控制：`get_version_info` 自报 `gensokyo`，在 `compat.gensokyo.listen` 上启动头像代理并实现非标准的 `get_avatar`。
+`proxy.enabled` 为真时，进程在 `proxy.listen` 上启动代理服务，提供 `/media/<token>` 与 `/avatar/<标识>` 两条路径，取图时附带云湖 CDN 要求的来源头。`compat.gensokyo.enabled` 为真时另做两件事：`get_version_info` 自报 `gensokyo`，实现非标准的 `get_avatar`。
 
-两件事必须同时生效。只自报名字时客户端会来要头像地址，而地址指向的 CDN 需要来源头，客户端下载会得到 403；只开代理时客户端根本不会来要。因此配置里只有一个开关。
+头像路径需要两个开关同时为真，媒体路径只依赖 `proxy.enabled`。开启兼容模式却不启动代理时配置校验直接报错，避免客户端拿到打不开的地址。
 
 ```mermaid
 flowchart LR
-    C["客户端"] -->|"GET /avatar/标识"| P["头像代理"]
-    P -->|"带来源头取图"| D["云湖头像 CDN"]
+    C["客户端"] -->|"GET /media/token 或 /avatar/标识"| P["代理服务"]
+    P -->|"带来源头取图"| D["云湖 CDN"]
     P --> A["头像地址表"]
     E["消息事件与查询结果"] --> A
 ```
 
-头像地址表由事件转换与查询接口写入，键是 OneBot 的整数标识，值是云湖返回的 `avatarUrl`。代理只接受 `/avatar/<标识>` 这一种路径，取图时校验域名与内容类型，单张上限 1 MiB，缓存 6 小时；表里没有的用户返回运行时生成的灰色占位图，不返回 404。
+媒体路径里的 `token` 是原始地址的 base64url 编码，因此不需要地址表。头像地址表由事件转换与查询接口写入，键是 OneBot 的整数标识，值是云湖返回的 `avatarUrl`。
 
-关掉开关时这些路径全部不存在：`get_avatar` 返回 1404，`app_name` 报回 `HelloYunhu`，监听端口不启动。
+媒体不超过 `proxy.stream_threshold` 时先取完再返回，超过时边取边发；`Range` 原样转给上游，单次上限由 `proxy.media_max` 决定，并发由 `proxy.concurrency` 限制。头像走单独的取图逻辑：校验域名与内容类型，单张上限 1 MiB，缓存 6 小时，webp 自动转成 JPEG 或 PNG。
+
+关掉 `proxy.enabled` 时端口不启动，消息段里不再给出地址；关掉 `compat.gensokyo.enabled` 时 `/avatar` 路径不注册，`get_avatar` 返回 1404，`app_name` 报回 `HelloYunhu`。
