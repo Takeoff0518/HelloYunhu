@@ -111,6 +111,8 @@ func newPermissionDispatcher(t *testing.T) (*Dispatcher, *permissionServer) {
 		Nickname: "机器人",
 		API:      client,
 		Messages: identity.NewMemory(),
+		// 默认按群主上报持有标签管理权限的机器人，与配置默认值一致。
+		Tags: TagOptions{ReportOwner: true},
 	}
 
 	return dispatcher, state
@@ -147,7 +149,7 @@ func TestSelfMemberRoleFollowsPermissions(t *testing.T) {
 		{name: "禁言", permissions: `{"allowGagMember":1}`, want: roleAdmin},
 		{name: "移除成员", permissions: `{"allowRemoveMember":1}`, want: roleAdmin},
 		{name: "修改群信息", permissions: `{"allowEditGroupInfo":1}`, want: roleAdmin},
-		{name: "群标签", permissions: `{"allowGroupTagManage":1}`, want: roleAdmin},
+		{name: "群标签", permissions: `{"allowGroupTagManage":1}`, want: roleOwner},
 		{name: "只有成员列表权限", permissions: `{"allowGetGroupMembers":1}`, want: roleMember},
 	}
 
@@ -171,6 +173,18 @@ func TestSelfMemberRoleFollowsPermissions(t *testing.T) {
 				t.Errorf("成员列表接口被调用 %d 次", calls)
 			}
 		})
+	}
+}
+
+// TestSelfMemberReportsAdminWhenOwnerDisabled 校验关闭群主上报后，标签权限只算管理员。
+func TestSelfMemberReportsAdminWhenOwnerDisabled(t *testing.T) {
+	dispatcher, state := newPermissionDispatcher(t)
+	dispatcher.Tags.ReportOwner = false
+	state.setPermissions(`{"allowGroupTagManage":1}`)
+
+	payload := memberInfo(t, dispatcher, `{"group_id":20001,"user_id":1001}`)
+	if payload["role"] != roleAdmin {
+		t.Errorf("角色为 %v，期望 %s", payload["role"], roleAdmin)
 	}
 }
 
