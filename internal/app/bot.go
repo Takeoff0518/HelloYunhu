@@ -22,6 +22,7 @@ import (
 	"github.com/Takeoff0518/HelloYunhu/internal/onebot/action"
 	onebotclient "github.com/Takeoff0518/HelloYunhu/internal/onebot/client"
 	obmodel "github.com/Takeoff0518/HelloYunhu/internal/onebot/model"
+	"github.com/Takeoff0518/HelloYunhu/internal/proxy"
 	"github.com/Takeoff0518/HelloYunhu/internal/yunhu/api"
 	"github.com/Takeoff0518/HelloYunhu/internal/yunhu/model"
 	"github.com/Takeoff0518/HelloYunhu/internal/yunhu/subscribe"
@@ -114,15 +115,16 @@ func runBot(ctx context.Context, cfg *config.Config, logger *slog.Logger, messag
 	log.Info("已连接云湖机器人", "bot_id", info.BotID, "nickname", info.Nickname)
 	status.setBot(info.BotID, info.Nickname)
 
-	// 媒体读取无状态，两个方向共用同一个实例。
-	mediaLoader := &media.Loader{}
+	// 两个方向各用一个读取器，上限分别由配置决定：接收方向超限时改为给出地址，
+	// 发送方向超限时放弃这次发送。
+	receiveMedia := &media.Loader{MaxBytes: cfg.Media.InlineLimit.Bytes()}
+	sendMedia := &media.Loader{MaxBytes: cfg.Media.ReadLimit.Bytes()}
 	// 最近消息缓存用于 get_msg 回放，容量按默认值。
 	recent := cache.NewMessages(0)
 	// 昵称缓存供发送 @ 使用，来源是收到的消息事件。
 	nicknames := cache.NewNicknames(0)
 
-	// 兼容模式开启时才建立头像地址表与代理。对外前缀为空表示不提供 get_avatar，
-	// 两件事由同一个开关决定，避免出现「自报了名字却没有可用地址」的组合。
+	// 头像地址表只在代理与兼容模式同时开启时建立：没有地址可给时不必收集。
 	var avatarStore *avatar.Store
 	avatarBase := cfg.AvatarBaseURL()
 	if avatarBase != "" {
@@ -134,7 +136,7 @@ func runBot(ctx context.Context, cfg *config.Config, logger *slog.Logger, messag
 		Nickname:      info.Nickname,
 		API:           apiClient,
 		Messages:      messages,
-		Media:         mediaLoader,
+		Media:         sendMedia,
 		Recent:        recent,
 		Nicknames:     nicknames,
 		CanSendImage:  cfg.Capabilities.CanSendImage,
@@ -175,13 +177,14 @@ func runBot(ctx context.Context, cfg *config.Config, logger *slog.Logger, messag
 	status.setConnections(connections)
 
 	converter := &event.Converter{
-		SelfID:    selfID,
-		BotID:     info.BotID,
-		Messages:  messages,
-		Media:     mediaLoader,
-		Nicknames: nicknames,
-		Avatars:   avatarStore,
-		Logger:    log,
+		SelfID:       selfID,
+		BotID:        info.BotID,
+		Messages:     messages,
+		Media:        receiveMedia,
+		Nicknames:    nicknames,
+		Avatars:      avatarStore,
+		MediaBaseURL: cfg.ProxyBaseURL(),
+		Logger:       log,
 	}
 
 	// 机器人自己的头像也记下，客户端会为它单独要一次。
@@ -299,10 +302,24 @@ func runBot(ctx context.Context, cfg *config.Config, logger *slog.Logger, messag
 			return webhookServer.Run(ctx, cfg.Receive.Webhook.Listen)
 		})
 	}
-	if avatarStore != nil {
-		proxy := &avatar.Proxy{Store: avatarStore, Logger: log}
-		run("头像代理", func() error {
-			return proxy.Run(ctx, cfg.Compat.Gensokyo.Listen)
+	if cfg.Proxy.Enabled {
+		options := proxy.Options{
+			Addr: cfg.Proxy.Listen,
+			Media: &proxy.Media{
+				StreamThreshold: cfg.Proxy.StreamThreshold.Bytes(),
+				Max:             cfg.Proxy.MediaMax.Bytes(),
+				Concurrency:     cfg.Proxy.Concurrency,
+				Logger:          log,
+			},
+			Logger: log,
+		}
+		// 头像路径只在兼容模式开启时提供：没有 get_avatar，客户端不会来取。
+		if avatarStore != nil {
+			options.Avatar = &avatar.Proxy{Store: avatarStore, Logger: log}
+		}
+
+		run("代理服务", func() error {
+			return proxy.Run(ctx, options)
 		})
 	}
 	for _, conn := range connections {

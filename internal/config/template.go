@@ -62,13 +62,28 @@ capabilities:
   can_send_image: true
   can_send_record: false
 
-# 兼容设置，默认关闭。开启 gensokyo 会自报该名字并提供云湖头像代理，
-# 供 Overflow 这类 mirai 客户端显示真实头像。详见配置说明。
+# 两个方向的媒体体积上限。
+media:
+  # 云湖的多媒体超过该体积时不再内联为 base64，消息段里只给出地址。
+  inline_limit: 20MiB
+  # 框架给出的多媒体超过该体积时，放弃这次发送。
+  read_limit: 20MiB
+
+# 对外提供云湖媒体与头像的 HTTP 服务，默认关闭。
+proxy:
+  enabled: false
+  listen: 127.0.0.1:8082
+  # 客户端访问代理时使用的地址，留空按 listen 推导。
+  base_url: ""
+  stream_threshold: 8MiB
+  media_max: 1GiB
+  concurrency: 4
+
+# 兼容模式，默认关闭。开启后自报 gensokyo 并实现 get_avatar，
+# 供 Overflow 这类 mirai 客户端显示云湖头像，需要 proxy.enabled 同时为真。
 compat:
   gensokyo:
     enabled: false
-    listen: 127.0.0.1:8082
-    base_url: ""
 
 diagnostics:
   enabled: false

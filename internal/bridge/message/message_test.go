@@ -84,7 +84,7 @@ func TestMentionNames(t *testing.T) {
 }
 
 func TestIncomingImage(t *testing.T) {
-	segment := IncomingImage("base64://abc", "https://cdn.example.com/a.png", "a.png")
+	segment := IncomingImage("base64://abc", "http://127.0.0.1:8082/media/abc", "a.png")
 
 	if segment.Type != "image" {
 		t.Fatalf("消息段类型为 %q", segment.Type)
@@ -93,8 +93,8 @@ func TestIncomingImage(t *testing.T) {
 	if !ok {
 		t.Fatalf("消息段数据为 %T", segment.Data)
 	}
-	// 内容已经内联，地址不再输出：客户端拿地址去下载会得到 403。
-	if data.File != "base64://abc" || data.URL != "" || data.Name != "a.png" {
+	// 构造函数只负责组织字段，地址由调用方决定：代理启用时是代理地址。
+	if data.File != "base64://abc" || data.URL != "http://127.0.0.1:8082/media/abc" || data.Name != "a.png" {
 		t.Errorf("图片段为 %+v", data)
 	}
 }

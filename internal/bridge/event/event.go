@@ -22,6 +22,7 @@ import (
 	"github.com/Takeoff0518/HelloYunhu/internal/bridge/message"
 	"github.com/Takeoff0518/HelloYunhu/internal/logging"
 	obmodel "github.com/Takeoff0518/HelloYunhu/internal/onebot/model"
+	"github.com/Takeoff0518/HelloYunhu/internal/proxypath"
 	"github.com/Takeoff0518/HelloYunhu/internal/yunhu/model"
 )
 
@@ -39,6 +40,8 @@ type Converter struct {
 	Nicknames *cache.Nicknames
 	// Avatars 记录见过的头像地址，兼容模式的头像代理据此取图，为空时不记录。
 	Avatars *avatar.Store
+	// MediaBaseURL 是代理服务的对外地址，为空时消息段里不给出可下载的地址。
+	MediaBaseURL string
 	// Logger 为空时丢弃日志。
 	Logger *slog.Logger
 }
@@ -187,6 +190,29 @@ func (c *Converter) replySegment(ctx context.Context, parentID string) *obmodel.
 	return &segment
 }
 
+// link 返回媒体在代理服务上的地址。
+//
+// 代理未启用时返回空，消息段里只保留 base64，避免客户端去下载一个需要来源头、
+// 直接请求会得到 403 的地址。
+func (c *Converter) link(rawURL string) string {
+	if c.MediaBaseURL == "" || rawURL == "" {
+		return ""
+	}
+
+	token := base64.RawURLEncoding.EncodeToString([]byte(rawURL))
+	return strings.TrimRight(c.MediaBaseURL, "/") + proxypath.Media + token
+}
+
+// address 返回客户端可以取到的地址：代理启用时用代理地址，否则用原地址。
+//
+// 下载失败、内容无法内联时用这个函数，至少让客户端还有一条路可走。
+func (c *Converter) address(rawURL string) string {
+	if link := c.link(rawURL); link != "" {
+		return link
+	}
+	return rawURL
+}
+
 // segments 把消息内容转换为消息段与原始文本。
 //
 // command 非空时拼在文本正文之前，与 OneBot 框架按正文匹配命令的习惯一致。
@@ -217,7 +243,7 @@ func (c *Converter) segments(ctx context.Context, payload *model.Message, comman
 			return message.IncomingPlaceholder(payload.ContentType), ""
 		}
 		file := c.mediaSource(ctx, "文件", content.FileURL)
-		return obmodel.OutMessage{message.IncomingFile(file, content.FileURL, content.FileName)}, message.PlaceholderFile
+		return obmodel.OutMessage{message.IncomingFile(file, c.link(content.FileURL), content.FileName)}, message.PlaceholderFile
 
 	case model.ContentTypeVideo:
 		content, err := payload.VideoContent()
@@ -226,7 +252,7 @@ func (c *Converter) segments(ctx context.Context, payload *model.Message, comman
 			return message.IncomingPlaceholder(payload.ContentType), ""
 		}
 		file := c.mediaSource(ctx, "视频", content.VideoURL)
-		return obmodel.OutMessage{message.IncomingVideo(file, content.VideoURL)}, message.PlaceholderVideo
+		return obmodel.OutMessage{message.IncomingVideo(file, c.link(content.VideoURL))}, message.PlaceholderVideo
 
 	case model.ContentTypeAudio:
 		content, err := payload.AudioContent()
@@ -235,7 +261,7 @@ func (c *Converter) segments(ctx context.Context, payload *model.Message, comman
 			return message.IncomingPlaceholder(payload.ContentType), ""
 		}
 		file := c.mediaSource(ctx, "语音", content.AudioURL)
-		return obmodel.OutMessage{message.IncomingAudio(file, content.AudioURL)}, message.PlaceholderAudio
+		return obmodel.OutMessage{message.IncomingAudio(file, c.link(content.AudioURL))}, message.PlaceholderAudio
 
 	default:
 		return message.IncomingPlaceholder(payload.ContentType), ""
@@ -257,29 +283,31 @@ func (c *Converter) imageSegments(ctx context.Context, payload *model.Message) (
 		name, data, err := c.Media.Load(ctx, content.ImageURL)
 		if err == nil {
 			file := "base64://" + base64.StdEncoding.EncodeToString(data)
-			return obmodel.OutMessage{message.IncomingImage(file, content.ImageURL, name)}, message.PlaceholderImage
+			return obmodel.OutMessage{message.IncomingImage(file, c.link(content.ImageURL), name)}, message.PlaceholderImage
 		}
 		c.logger().Warn("下载图片失败，已退化为直接给出地址", "msg_id", payload.MsgID, "err", err)
 	}
 
-	name := content.ImageName
-	segment := message.IncomingImage(content.ImageURL, content.ImageURL, name)
+	// 无法内联时只给出地址，代理启用的情况下这个地址由本程序转发。
+	link := c.address(content.ImageURL)
+	segment := message.IncomingImage(link, link, content.ImageName)
 	return obmodel.OutMessage{segment}, message.PlaceholderImage
 }
 
 // mediaSource 把云湖的文件、视频与语音下载成 base64。
 //
 // 这些媒体同样受 CDN 的来源限制，框架直接拿地址去下载会得到 403，所以先在本进程
-// 里下载再交给框架。下载失败时退回原地址，至少留下可追溯的线索。
+// 里下载，再以 base64 发给框架。下载失败时退回地址，代理启用时这个地址由本程序
+// 转发，未启用时是原始地址。
 func (c *Converter) mediaSource(ctx context.Context, kind, rawURL string) string {
 	if c.Media == nil || rawURL == "" {
-		return rawURL
+		return c.address(rawURL)
 	}
 
 	_, data, err := c.Media.Load(ctx, rawURL)
 	if err != nil {
 		c.logger().Warn("下载媒体失败，已退化为直接给出地址", "kind", kind, "err", err)
-		return rawURL
+		return c.address(rawURL)
 	}
 
 	return "base64://" + base64.StdEncoding.EncodeToString(data)

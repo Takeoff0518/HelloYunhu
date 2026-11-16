@@ -151,7 +151,7 @@ func scanMentions(text string) []mention {
 func IncomingImage(file, url, name string) obmodel.OutSegment {
 	return obmodel.OutSegment{
 		Type: "image",
-		Data: obmodel.ImageData{File: file, URL: inlineURL(file, url), Name: name},
+		Data: obmodel.ImageData{File: file, URL: url, Name: name},
 	}
 }
 
@@ -159,7 +159,7 @@ func IncomingImage(file, url, name string) obmodel.OutSegment {
 func IncomingFile(file, url, name string) obmodel.OutSegment {
 	return obmodel.OutSegment{
 		Type: "file",
-		Data: obmodel.FileData{File: file, URL: inlineURL(file, url), Name: name},
+		Data: obmodel.FileData{File: file, URL: url, Name: name},
 	}
 }
 
@@ -167,7 +167,7 @@ func IncomingFile(file, url, name string) obmodel.OutSegment {
 func IncomingVideo(file, url string) obmodel.OutSegment {
 	return obmodel.OutSegment{
 		Type: "video",
-		Data: obmodel.VideoData{File: file, URL: inlineURL(file, url)},
+		Data: obmodel.VideoData{File: file, URL: url},
 	}
 }
 
@@ -175,20 +175,8 @@ func IncomingVideo(file, url string) obmodel.OutSegment {
 func IncomingAudio(file, url string) obmodel.OutSegment {
 	return obmodel.OutSegment{
 		Type: "record",
-		Data: obmodel.RecordData{File: file, URL: inlineURL(file, url)},
+		Data: obmodel.RecordData{File: file, URL: url},
 	}
-}
-
-// inlineURL 在内容已经内联时丢掉网络地址。
-//
-// 云湖的媒体地址带来源校验，客户端直接下载会得到 403。内容已经以 base64:// 给出
-// 时，地址只会引导框架与插件去下载一个打不开的链接，因此不再输出；下载失败、
-// 只能给出地址的降级路径保持不变。
-func inlineURL(file, url string) string {
-	if strings.HasPrefix(file, "base64://") {
-		return ""
-	}
-	return url
 }
 
 // IncomingPlaceholder 为暂不支持的内容类型生成占位文本。

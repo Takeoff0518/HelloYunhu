@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,8 +35,24 @@ const (
 	defaultRateLimit    = 10
 	defaultDiagnoseAddr = "127.0.0.1:9090"
 	defaultWebhookAddr  = "127.0.0.1:8081"
-	defaultAvatarAddr   = "127.0.0.1:8082"
+	defaultProxyAddr    = "127.0.0.1:8082"
+	defaultInlineLimit  = 20 << 20
+	defaultReadLimit    = 20 << 20
+	defaultStreamLimit  = 8 << 20
+	defaultMediaMax     = 1 << 30
+	defaultConcurrency  = 4
 )
+
+// 体积与并发的取值范围。
+var (
+	// maxInlineLimit 是接收方向内联上限的上限，再大就会让单条事件占用过多内存。
+	maxInlineLimit = Size(64 << 20)
+	// maxStreamThreshold 是分档阈值的上限，超过就没有分档的意义。
+	maxStreamThreshold = Size(256 << 20)
+)
+
+// maxProxyConcurrency 是同时向上游发起的取图请求数上限。
+const maxProxyConcurrency = 32
 
 // 向框架自报的程序名。兼容模式使用另一个项目的名字，见 Compat。
 const (
@@ -72,6 +89,10 @@ type Config struct {
 	Yunhu Yunhu `yaml:"yunhu"`
 	// Capabilities 是向框架声明的能力。
 	Capabilities Capabilities `yaml:"capabilities"`
+	// Media 是两个方向的媒体体积上限。
+	Media Media `yaml:"media"`
+	// Proxy 是对外提供云湖媒体与头像的 HTTP 服务。
+	Proxy Proxy `yaml:"proxy"`
 	// Compat 是给非标准客户端准备的兼容设置。
 	Compat Compat `yaml:"compat"`
 	// Diagnostics 是只读诊断接口的设置。
@@ -185,20 +206,51 @@ type Compat struct {
 //
 // Overflow 这类客户端只在协议端自报 gensokyo 时才调用非标准的 get_avatar 取头像，
 // 其余情况一律拿整数标识当 QQ 号去 qlogo 取，接在非 QQ 平台上会显示成陌生人的
-// 头像。开启之后程序自报这个名字，并启动头像代理供客户端下载云湖头像。
+// 头像。开启之后程序自报这个名字，并由代理服务提供云湖的头像地址。
 //
-// 两件事必须同时生效：只自报名字而没有代理，客户端拿到的地址打不开；只开代理而
-// 不自报名字，客户端根本不会来要地址。因此配置里只有一个开关。
+// 头像地址由 Proxy 段提供，因此开启这一项要求 proxy.enabled 也为真。
 type Gensokyo struct {
 	// Enabled 是兼容模式的唯一开关。
 	Enabled bool `yaml:"enabled"`
-	// Listen 是头像代理的监听地址。
+}
+
+// Media 是两个方向的媒体体积上限。
+//
+// 这一组只限制单次能处理多大的媒体，与代理服务无关。
+type Media struct {
+	// InlineLimit 是接收方向内联为 base64 的体积上限。
+	//
+	// 云湖的多媒体超过这个体积时不再内联为 base64，消息段里只给出地址。
+	InlineLimit Size `yaml:"inline_limit"`
+	// ReadLimit 是发送方向读取框架给出媒体的体积上限。
+	//
+	// 框架给出的多媒体超过这个体积时，放弃这次发送。
+	ReadLimit Size `yaml:"read_limit"`
+}
+
+// Proxy 是对外提供云湖媒体与头像的 HTTP 服务。
+//
+// 客户端拿到的地址由本程序代取，取图时附带云湖 CDN 要求的来源头。关闭时消息段里
+// 不再给出可下载的地址，头像接口按未实现处理。
+type Proxy struct {
+	// Enabled 为真时启动代理服务。
+	Enabled bool `yaml:"enabled"`
+	// Listen 是监听地址。
 	Listen string `yaml:"listen"`
-	// BaseURL 是客户端访问头像时使用的前缀，只含协议、主机与端口。
+	// BaseURL 是客户端访问代理时使用的地址，只含协议、主机与端口。
 	//
 	// 留空时按 Listen 推导。框架与本程序不在同一台机器时，必须填写框架能访问到的
 	// 地址，否则客户端会把 127.0.0.1 解析到它自己。
 	BaseURL string `yaml:"base_url"`
+	// StreamThreshold 是整块读取与边取边发的分界体积。
+	//
+	// 不超过该体积时先取完再返回，响应要么完整要么报错；超过时边取边发，避免大
+	// 文件整块占用内存。
+	StreamThreshold Size `yaml:"stream_threshold"`
+	// MediaMax 是单次转发允许的体积上限，0 表示不限。
+	MediaMax Size `yaml:"media_max"`
+	// Concurrency 是同时向上游发起的取图请求数。
+	Concurrency int `yaml:"concurrency"`
 }
 
 // UnmarshalYAML 按字段是否出现决定是否覆盖默认值。
@@ -258,6 +310,89 @@ func (d Duration) Standard() time.Duration {
 	return time.Duration(d)
 }
 
+// Size 是带单位的体积，支持 B、KiB、MiB、GiB 与 KB、MB、GB 两类写法。
+//
+// 带 i 的单位按 1024 进位，不带 i 的按 1000 进位。配置里统一写成 20MiB、1GiB
+// 这类形式，避免直接写字节数时数不清零。
+type Size int64
+
+// sizeUnits 是支持的体积单位，长后缀排在前面，避免 20MiB 被当成 20B。
+var sizeUnits = []struct {
+	suffix string
+	factor int64
+}{
+	{suffix: "GIB", factor: 1 << 30},
+	{suffix: "MIB", factor: 1 << 20},
+	{suffix: "KIB", factor: 1 << 10},
+	{suffix: "GB", factor: 1000 * 1000 * 1000},
+	{suffix: "MB", factor: 1000 * 1000},
+	{suffix: "KB", factor: 1000},
+	{suffix: "B", factor: 1},
+}
+
+// ParseSize 解析带单位的体积。
+func ParseSize(text string) (int64, error) {
+	raw := strings.TrimSpace(text)
+	if raw == "" {
+		return 0, errors.New("体积不能为空")
+	}
+
+	upper := strings.ToUpper(raw)
+	for _, unit := range sizeUnits {
+		if !strings.HasSuffix(upper, unit.suffix) {
+			continue
+		}
+
+		number := strings.TrimSpace(raw[:len(raw)-len(unit.suffix)])
+		value, err := strconv.ParseInt(number, 10, 64)
+		if err != nil || value < 0 {
+			return 0, fmt.Errorf("无法解析体积 %q，数字部分应为非负整数", raw)
+		}
+		return value * unit.factor, nil
+	}
+
+	return 0, fmt.Errorf("体积 %q 缺少单位，可写 B、KiB、MiB、GiB、KB、MB 或 GB", raw)
+}
+
+// UnmarshalYAML 把配置中的字符串转换为体积。
+func (s *Size) UnmarshalYAML(value *yaml.Node) error {
+	var text string
+	if err := value.Decode(&text); err != nil {
+		return fmt.Errorf("需要写成带单位的字符串，例如 8MiB: %w", err)
+	}
+	parsed, err := ParseSize(text)
+	if err != nil {
+		return err
+	}
+	*s = Size(parsed)
+	return nil
+}
+
+// MarshalYAML 以可读的形式输出，能整除时用 MiB 或 GiB，否则给出字节数。
+func (s Size) MarshalYAML() (any, error) {
+	switch {
+	case s > 0 && s%(1<<30) == 0:
+		return fmt.Sprintf("%dGiB", s/(1<<30)), nil
+	case s > 0 && s%(1<<20) == 0:
+		return fmt.Sprintf("%dMiB", s/(1<<20)), nil
+	case s > 0 && s%(1<<10) == 0:
+		return fmt.Sprintf("%dKiB", s/(1<<10)), nil
+	default:
+		return fmt.Sprintf("%dB", int64(s)), nil
+	}
+}
+
+// Bytes 返回字节数。
+func (s Size) Bytes() int64 {
+	return int64(s)
+}
+
+// String 返回可读的体积。
+func (s Size) String() string {
+	value, _ := s.MarshalYAML()
+	return value.(string)
+}
+
 // Default 返回带默认值的配置。
 func Default() *Config {
 	return &Config{
@@ -285,10 +420,15 @@ func Default() *Config {
 		Capabilities: Capabilities{
 			CanSendImage: true,
 		},
-		Compat: Compat{
-			Gensokyo: Gensokyo{
-				Listen: defaultAvatarAddr,
-			},
+		Media: Media{
+			InlineLimit: Size(defaultInlineLimit),
+			ReadLimit:   Size(defaultReadLimit),
+		},
+		Proxy: Proxy{
+			Listen:          defaultProxyAddr,
+			StreamThreshold: Size(defaultStreamLimit),
+			MediaMax:        Size(defaultMediaMax),
+			Concurrency:     defaultConcurrency,
 		},
 		Diagnostics: Diagnostics{
 			Listen: defaultDiagnoseAddr,
@@ -350,13 +490,8 @@ func (c *Config) normalize() {
 		}
 	}
 
-	if c.Compat.Gensokyo.Enabled {
-		if strings.TrimSpace(c.Compat.Gensokyo.Listen) == "" {
-			c.Compat.Gensokyo.Listen = defaultAvatarAddr
-		}
-		if strings.TrimSpace(c.Compat.Gensokyo.BaseURL) == "" {
-			c.Compat.Gensokyo.BaseURL = deriveBaseURL(c.Compat.Gensokyo.Listen)
-		}
+	if c.Proxy.Enabled && strings.TrimSpace(c.Proxy.BaseURL) == "" {
+		c.Proxy.BaseURL = deriveBaseURL(c.Proxy.Listen)
 	}
 }
 
@@ -371,12 +506,20 @@ func (c *Config) AppName() string {
 	return appNameDefault
 }
 
-// AvatarBaseURL 返回头像代理的对外前缀，兼容模式关闭时为空。
+// ProxyBaseURL 返回代理服务的对外地址，服务未启用时为空。
+func (c *Config) ProxyBaseURL() string {
+	if !c.Proxy.Enabled {
+		return ""
+	}
+	return strings.TrimRight(c.Proxy.BaseURL, "/")
+}
+
+// AvatarBaseURL 返回头像地址的对外前缀，代理未启用或兼容模式关闭时为空。
 func (c *Config) AvatarBaseURL() string {
 	if !c.Compat.Gensokyo.Enabled {
 		return ""
 	}
-	return strings.TrimRight(c.Compat.Gensokyo.BaseURL, "/")
+	return c.ProxyBaseURL()
 }
 
 // Validate 校验配置，并把发现的问题一次性全部返回。
@@ -417,37 +560,82 @@ func (c *Config) Validate() error {
 	problems = append(problems, validateWebSocketURL("yunhu.subscribe_url", c.Yunhu.SubscribeURL)...)
 
 	problems = append(problems, c.validateOneBot()...)
+	problems = append(problems, c.validateMedia()...)
+	problems = append(problems, c.validateProxy()...)
 	problems = append(problems, c.validateCompat()...)
 
 	return errors.Join(problems...)
 }
 
-// validateCompat 校验兼容模式的设置。
-//
-// 开关为假时忽略取值，但写法本身仍然校验，避免开关打开后才暴露拼写问题。
-func (c *Config) validateCompat() []error {
+// validateMedia 校验两个方向的媒体体积上限。
+func (c *Config) validateMedia() []error {
 	var problems []error
 
-	compat := c.Compat.Gensokyo
-	listen := strings.TrimSpace(compat.Listen)
-	if listen != "" {
-		if _, _, err := net.SplitHostPort(listen); err != nil {
-			problems = append(problems, fmt.Errorf(
-				"compat.gensokyo.listen: %q 不是合法的监听地址，例如 127.0.0.1:8082", compat.Listen))
-		}
-	} else if compat.Enabled {
-		problems = append(problems, errors.New("compat.gensokyo.listen: 开启兼容模式时不能为空"))
+	if c.Media.InlineLimit <= 0 {
+		problems = append(problems, errors.New("media.inline_limit: 必须大于 0"))
+	} else if c.Media.InlineLimit > maxInlineLimit {
+		problems = append(problems, fmt.Errorf(
+			"media.inline_limit: 不超过 %s，再大就会让单条事件占用过多内存", maxInlineLimit))
 	}
-
-	baseURL := strings.TrimSpace(compat.BaseURL)
-	if baseURL != "" {
-		problems = append(problems, validateBaseURL("compat.gensokyo.base_url", baseURL)...)
-	} else if compat.Enabled {
-		problems = append(problems, errors.New(
-			"compat.gensokyo.base_url: 开启兼容模式时不能为空，且无法从监听地址推导"))
+	if c.Media.ReadLimit <= 0 {
+		problems = append(problems, errors.New("media.read_limit: 必须大于 0"))
 	}
 
 	return problems
+}
+
+// validateProxy 校验代理服务的设置。
+//
+// 开关为假时忽略取值，但写法本身仍然校验，避免开关打开后才暴露拼写问题。
+func (c *Config) validateProxy() []error {
+	var problems []error
+
+	listen := strings.TrimSpace(c.Proxy.Listen)
+	if listen != "" {
+		if _, _, err := net.SplitHostPort(listen); err != nil {
+			problems = append(problems, fmt.Errorf(
+				"proxy.listen: %q 不是合法的监听地址，例如 127.0.0.1:8082", c.Proxy.Listen))
+		}
+	} else if c.Proxy.Enabled {
+		problems = append(problems, errors.New("proxy.listen: 启用代理服务时不能为空"))
+	}
+
+	baseURL := strings.TrimSpace(c.Proxy.BaseURL)
+	if baseURL != "" {
+		problems = append(problems, validateBaseURL("proxy.base_url", baseURL)...)
+	} else if c.Proxy.Enabled {
+		problems = append(problems, errors.New(
+			"proxy.base_url: 启用代理服务时不能为空，且无法从监听地址推导"))
+	}
+
+	if c.Proxy.StreamThreshold <= 0 {
+		problems = append(problems, errors.New("proxy.stream_threshold: 必须大于 0"))
+	} else if c.Proxy.StreamThreshold > maxStreamThreshold {
+		problems = append(problems, fmt.Errorf(
+			"proxy.stream_threshold: 不超过 %s，超过就没有分档的意义", maxStreamThreshold))
+	}
+	if c.Proxy.MediaMax < 0 {
+		problems = append(problems, errors.New("proxy.media_max: 不能为负数，0 表示不限"))
+	} else if c.Proxy.MediaMax > 0 && c.Proxy.MediaMax < c.Proxy.StreamThreshold {
+		problems = append(problems, errors.New("proxy.media_max: 不能小于 proxy.stream_threshold，0 表示不限"))
+	}
+	if c.Proxy.Concurrency < 1 || c.Proxy.Concurrency > maxProxyConcurrency {
+		problems = append(problems, fmt.Errorf("proxy.concurrency: 取 1 到 %d", maxProxyConcurrency))
+	}
+
+	return problems
+}
+
+// validateCompat 校验兼容模式的设置。
+func (c *Config) validateCompat() []error {
+	if !c.Compat.Gensokyo.Enabled {
+		return nil
+	}
+	if !c.Proxy.Enabled {
+		return []error{errors.New(
+			"compat.gensokyo.enabled: 需要 proxy.enabled 同时为真，否则客户端拿到的头像地址无法访问")}
+	}
+	return nil
 }
 
 // deriveBaseURL 按监听地址推导客户端访问头像时使用的前缀。
