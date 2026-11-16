@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.27.4-00ADD8.svg?logo=go)](go.mod)
 [![CI](https://github.com/Takeoff0518/HelloYunhu/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Takeoff0518/HelloYunhu/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v0.2.0-blue.svg)](https://github.com/Takeoff0518/HelloYunhu/releases)
+[![Release](https://img.shields.io/badge/release-v0.3.0-blue.svg)](https://github.com/Takeoff0518/HelloYunhu/releases)
 
 [快速开始](docs/guides/quickstart.md)　[配置说明](docs/guides/configuration.md)　[常见问题](docs/guides/troubleshooting.md)　[功能支持情况](docs/guides/compatibility.md)
 
@@ -27,7 +27,7 @@ HelloYunhu 补上的就是这一层。对于机器人框架，它表现为一个
 
 ## 当前状态
 
-0.2.0 已发布，可从 [Releases](https://github.com/Takeoff0518/HelloYunhu/releases) 下载 linux/amd64、windows/amd64 与 darwin/arm64 三个发行包。首个验收对象是 AstrBot 加 aiocqhttp 适配器，其他 OneBot v11 框架按协议层兼容。
+0.3.0 已发布，可从 [Releases](https://github.com/Takeoff0518/HelloYunhu/releases) 下载 linux/amd64、windows/amd64 与 darwin/arm64 三个发行包。首个验收对象是 AstrBot 加 aiocqhttp 适配器，其他 OneBot v11 框架按协议层兼容。
 
 完整的进度与验收状态记录在[项目状态](docs/design/status.md)中，模块划分与数据流见[架构说明](docs/design/architecture.md)。
 
