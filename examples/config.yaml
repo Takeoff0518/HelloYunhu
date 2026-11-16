@@ -113,6 +113,9 @@ tags:
   auto_create: true
   # 自动创建标签时使用的颜色，格式为 #RRGGBB。
   color: "#03A9F4"
+  # 持有标签管理权限时按群主上报角色。QQ 里设置专属头衔只有群主能做，
+  # 关掉之后这类机器人按管理员上报，只认群主的插件会拒绝设置头衔。
+  report_owner: true
   special_title:
     # replace 表示设置头衔后成员只剩这一个标签，与 QQ 的单值头衔一致；
     # append 表示只追加，不动成员已有的标签。
