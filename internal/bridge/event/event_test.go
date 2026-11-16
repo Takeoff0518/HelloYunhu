@@ -301,8 +301,9 @@ func TestConvertImageInlinesBase64(t *testing.T) {
 	if data.File != "base64://"+base64.StdEncoding.EncodeToString([]byte("image-bytes")) {
 		t.Errorf("图片段为 %+v", data)
 	}
-	if data.URL != imageServer.URL+"/a.png" {
-		t.Errorf("原始地址为 %q", data.URL)
+	// 内容已内联，地址必须省略：云湖的地址缺来源头会返回 403。
+	if data.URL != "" {
+		t.Errorf("内联时不应带地址，当前为 %q", data.URL)
 	}
 }
 

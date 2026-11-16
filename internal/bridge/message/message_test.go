@@ -93,7 +93,8 @@ func TestIncomingImage(t *testing.T) {
 	if !ok {
 		t.Fatalf("消息段数据为 %T", segment.Data)
 	}
-	if data.File != "base64://abc" || data.URL != "https://cdn.example.com/a.png" || data.Name != "a.png" {
+	// 内容已经内联，地址不再输出：客户端拿地址去下载会得到 403。
+	if data.File != "base64://abc" || data.URL != "" || data.Name != "a.png" {
 		t.Errorf("图片段为 %+v", data)
 	}
 }
