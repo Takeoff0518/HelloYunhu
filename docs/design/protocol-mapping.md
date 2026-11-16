@@ -45,10 +45,10 @@
 | `get_login_info` | 启动时查询的 `/bot/info` 结果 | 已实现 |
 | `get_status` | 本地状态，固定在线 | 已实现 |
 | `get_version_info` | 常量，`app_name` 为 HelloYunhu | 已实现 |
-| `get_group_info` | `GET /group/info` | 已实现 |
+| `get_group_info` | `GET /group/info` | 已实现，响应带 `yunhu_permissions` 扩展字段 |
 | `get_group_list` | `GET /bot/groups` 分页聚合 | 已实现 |
-| `get_group_member_info` | `GET /group/members` 扫描，失败返回空数据 | 已实现，受权限限制 |
-| `get_group_member_list` | `GET /group/members` 分页聚合，失败返回空列表 | 已实现，受权限限制 |
+| `get_group_member_info` | `GET /group/members` 扫描；查询机器人自己时就地构造 | 已实现，其他人受成员列表权限限制 |
+| `get_group_member_list` | `GET /group/members` 分页聚合；无权限时只返回机器人自己 | 已实现，受权限限制 |
 | `get_stranger_info` | 云湖无对应接口，返回空昵称 | 已实现 |
 | `get_msg` | 从最近消息缓存回放，未命中返回 1404 | 已实现 |
 | `.handle_quick_operation` | 直接返回成功 | 已实现 |
@@ -63,6 +63,28 @@
 `delete_msg` 只拿到消息标识，云湖还需要会话标识与类型。两者随标识映射一起写进 `message_id` 的 `chat_id` 与 `chat_type` 列，进程重启后仍能撤回旧消息。撤回接口的 `chatType` 取 `user` 或 `group`，事件里的私聊类型是 `bot`，调用前统一换算。
 
 框架之间对标识的序列化习惯不同：AstrBot 用数字，NoneBot2 的引用段把 `id` 序列化为字符串。接口实现同时接受数字与字符串，避免因为一个字段的写法差异让整条调用返回 100。
+
+### 2.1 机器人权限与角色
+
+云湖没有群主、管理员与群成员这类身份，机器人在每个群获得的是五项独立开关。OneBot 的 `role` 只有三个取值，无法一一对应，换算规则如下：
+
+| 情况 | `role` |
+|---|---|
+| 四个写入权限里任意一项为真 | `admin` |
+| 四个写入权限全为假 | `member` |
+| 机器人自身 | 永远不是 `owner` |
+
+四个写入权限是 `allowEditGroupInfo`、`allowGagMember`、`allowRemoveMember` 与 `allowGroupTagManage`，只读的 `allowGetGroupMembers` 不算管理能力。不报 `owner` 的原因是云湖的群主始终是真人，机器人不可能是群主，报这个值等于替它声明一个不存在的身份。
+
+`get_group_member_info` 查询机器人自己时不调用 `/group/members`，标识与昵称来自启动时查询的 `/bot/info`，权限来自 `/group/info`，因此没有成员列表权限的群同样能回答。这一点同时消除了两个隐患：`allowGetGroupMembers` 默认未授权，以及平台的成员列表很可能不包含机器人。
+
+`get_group_member_list` 在平台列表里没有机器人时补一条，插件遍历列表查找机器人时才有结果。没有成员列表权限时，列表退化为只有机器人一条，而不是空列表。
+
+`get_group_info` 的响应增加 `yunhu_permissions` 扩展字段，用五项布尔值保留原始权限，换算中丢掉的细节在这里补回。
+
+推导每次都查询 `/group/info`，不做缓存。群主调整权限的时机常常就是插件报告权限不足之后，缓存会让刚授予的权限在一段时间内继续被拒绝。查询失败时按 `member` 上报并记录一条警告，不猜测 `admin`。
+
+写操作被平台拒绝后追加一次群信息查询，如果对应的开关为假，就把说明写成「机器人在群 695367192 没有禁言权限，请在云湖群后台为机器人授予 allowGagMember」。这里不做前置拦截，理由与不做缓存相同：平台是权限的权威，本程序只负责把失败的原因说清楚。
 
 ## 3. 消息段映射
 

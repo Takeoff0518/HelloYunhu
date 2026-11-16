@@ -153,6 +153,7 @@ level=INFO msg=已连接机器人框架 url=ws://127.0.0.1:6199/ws self_id=…
 |---|---|
 | 全部配置项的取值与默认值 | [配置说明](configuration.md) |
 | 哪些消息类型、事件与接口可用 | [功能支持情况](compatibility.md) |
+| 写插件时要用的扩展字段与非标准行为 | [扩展字段](extensions.md) |
 | 启动或运行时的报错 | [常见问题](troubleshooting.md) |
 | 完整测试流程与自带的测试机器人 | [测试指南](testing.md) |
 

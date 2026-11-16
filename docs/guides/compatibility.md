@@ -78,10 +78,10 @@ Webhook 的推送地址是 `http://<listen>/yunhu/<token>`，直接把这段填�
 | `get_status` | 本地状态 | `✓` | 固定返回在线 |
 | `get_version_info` | 常量 | `✓` | `app_name` 默认为 `HelloYunhu`，开启兼容模式后为 `gensokyo` |
 | `get_avatar` | 头像代理 | `部分` | 非标准接口，只在 `compat.gensokyo.enabled` 为真时提供，参数 `user_id` 与可选的 `group_id`，返回头像地址 |
-| `get_group_info` | `GET /group/info` | `✓` |  |
+| `get_group_info` | `GET /group/info` | `✓` | 响应带 `yunhu_permissions`，见[扩展字段](extensions.md)第 3 节 |
 | `get_group_list` | `GET /bot/groups` | `✓` | 分页聚合 |
-| `get_group_member_info` | `GET /group/members` | `部分` | 需要机器人开启成员列表权限。失败时返回空对象，避免框架丢弃 @ 消息段 |
-| `get_group_member_list` | `GET /group/members` | `部分` | 同样需要成员列表权限。失败时返回空列表 |
+| `get_group_member_info` | `GET /group/members` | `部分` | 查询机器人自己时就地构造，不受权限限制；查询其他人需要成员列表权限，失败时返回空对象，避免框架丢弃 @ 消息段 |
+| `get_group_member_list` | `GET /group/members` | `部分` | 无成员列表权限时只返回机器人自己一条 |
 | `get_stranger_info` | 无对应接口 | `部分` | 返回空昵称，框架可以继续 |
 | `get_friend_list` | 无对应接口 | `部分` | 官方 API 列表里的「获取机器人用户列表」标注为待上线，当前返回空数组 |
 | `get_msg` | 进程内的最近消息缓存 | `部分` | 只覆盖接收方向，容量 512 条，重启后丢失 |
@@ -104,6 +104,8 @@ Webhook 的推送地址是 `http://<listen>/yunhu/<token>`，直接把这段填�
 **撤回没有事件通知。** 平台不推送撤回事件，框架收不到 `notice.message_recall`。需要撤回时由框架调用 `delete_msg`，参数是程序分配的消息整数标识。
 
 **禁言只有四个档位。** 平台只接受 600、3600、21600 与 43200 秒，另外 0 表示解禁，-1 表示永久。其它时长向上取到最近的档位，超过 43200 秒时按 43200 秒处理，因此「禁言一分钟」实际是十分钟。
+
+**机器人没有群主与管理员的身份。** 云湖按项授予管理权限，没有 OneBot 的 `role` 那种身份。程序把四个写入权限里的任意一项换算成 `admin`，全部为假时换算成 `member`，永远不报 `owner`。只有成员列表权限不计入管理能力。需要精确判断能力时读 `get_group_info` 的 `yunhu_permissions`，判定规则与字段含义见[扩展字段](extensions.md)第 4 节。写操作被平台拒绝时，程序的说明会写出缺少的权限名。
 
 **@ 的显示依赖昵称。** 平台的正文里必须出现 `@昵称` 才会渲染成提及，只给 `at` 数组时客户端显示数字标识。昵称来自收到过的消息事件，进程刚启动、还没见过这个人时，第一条 @ 会显示标识。
 

@@ -50,6 +50,7 @@ HelloYunhu 补上的就是这一层。对于机器人框架，它表现为一个
 - [开发计划](docs/design/roadmap.md)
 - [项目状态](docs/design/status.md)
 - [架构说明](docs/design/architecture.md)
+- [扩展字段与非标准行为](docs/guides/extensions.md)
 - [更新记录](CHANGELOG.md)
 - [文档索引](docs/README.md)
 - [调研材料](docs/research/)

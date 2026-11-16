@@ -180,6 +180,7 @@ HelloYunhu/
 | `docs/guides/quickstart.md` | 安装、配置与首次接入 | M4 |
 | `docs/guides/configuration.md` | 全部配置项说明 | M4 |
 | `docs/guides/troubleshooting.md` | 常见问题与排查方法 | M4 |
+| `docs/guides/extensions.md` | 扩展字段、自定义通知类型与非标准行为，写给插件作者 | 0.2.1 |
 | `CHANGELOG.md` | 版本变更记录 | 从 v0.1.0 开始 |
 
 `docs/research` 下的三份调研材料作为设计依据保留，不再修改。后续如需修订结论，在设计文档中说明并引用。

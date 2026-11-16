@@ -16,6 +16,7 @@
 
 - [快速开始](guides/quickstart.md)：安装、配置与首次接入，十分钟跑通第一句话。
 - [配置说明](guides/configuration.md)：全部配置项的取值、默认值与常见组合。
+- [扩展字段](guides/extensions.md)：本程序在 OneBot v11 之外增加的字段、自定义通知类型与非标准行为，写给编写插件的人。
 - [常见问题](guides/troubleshooting.md)：按故障阶段组织的现象、原因与处理步骤。
 - [测试指南](guides/testing.md)：自检、启动顺序、用测试机器人跑一轮测试与采集现场信息。
 - [测试机器人](../tools/testbot/README.md)：基于 NoneBot2 的测试框架，提供回声与诊断命令，不参与主程序构建。
