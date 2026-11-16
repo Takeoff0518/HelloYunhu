@@ -73,11 +73,17 @@
 
 | 情况 | `role` |
 |---|---|
-| 四个写入权限里任意一项为真 | `admin` |
-| 四个写入权限全为假 | `member` |
-| 机器人自身 | 永远不是 `owner` |
+| 持有 `allowGroupTagManage`，且 `tags.report_owner` 为真 | `owner` |
+| 其余三个写入权限里任意一项为真 | `admin` |
+| 三个写入权限全为假 | `member` |
 
-四个写入权限是 `allowEditGroupInfo`、`allowGagMember`、`allowRemoveMember` 与 `allowGroupTagManage`，只读的 `allowGetGroupMembers` 不算管理能力。不报 `owner` 的原因是云湖的群主始终是真人，机器人不可能是群主，报这个值等于替它声明一个不存在的身份。
+四个写入权限是 `allowEditGroupInfo`、`allowGagMember`、`allowRemoveMember` 与 `allowGroupTagManage`，只读的 `allowGetGroupMembers` 不算管理能力。`allowGroupTagManage` 单独按群主处理，剩下三个参与「有没有管理能力」的判断。
+
+标签管理单独报 `owner` 的原因是 QQ 里设置专属头衔只有群主能做。云湖把这件能力拆成一个开关，由群主或管理员授予机器人，拿到开关的机器人在这一件事上等价于群主。按管理员上报会让只认群主的头衔插件继续拒绝，问题只是从 `member` 挪到 `admin`。
+
+代价是插件会认为机器人拥有群主的全部能力。它可能尝试云湖没有开放的操作，例如全体禁言、设置管理员、转让群，这些接口返回 1404 与说明，不会静默成功。`role` 只有三个取值，表达不了「只对标签操作有群主权限」，任何一个取值都要丢掉一部分信息。
+
+`tags.report_owner` 改成假时，持有标签管理权限的机器人退回按管理员上报，供插件对 `owner` 有过强假设的部署使用。默认开启。
 
 `get_group_member_info` 查询机器人自己时不调用 `/group/members`，标识与昵称来自启动时查询的 `/bot/info`，权限来自 `/group/info`，因此没有成员列表权限的群同样能回答。这一点同时消除了两个隐患：`allowGetGroupMembers` 默认未授权，以及平台的成员列表很可能不包含机器人。
 

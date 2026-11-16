@@ -149,6 +149,7 @@ func runBot(ctx context.Context, cfg *config.Config, logger *slog.Logger, messag
 			Color:        cfg.Tags.Color,
 			Replace:      cfg.Tags.SpecialTitle.Mode == config.TagModeReplace,
 			ClearOnEmpty: cfg.Tags.SpecialTitle.ClearOnEmpty,
+			ReportOwner:  cfg.Tags.ReportOwner,
 		},
 		Logger: log,
 	}

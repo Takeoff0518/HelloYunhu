@@ -90,6 +90,8 @@ tags:
   # 设置头衔时标签不存在就自动创建。
   auto_create: true
   color: "#03A9F4"
+  # 持有标签管理权限时按群主上报角色。
+  report_owner: true
   special_title:
     # replace 表示设置后只剩这一个标签，append 表示只追加。
     mode: replace

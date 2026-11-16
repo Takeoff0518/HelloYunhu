@@ -186,9 +186,13 @@ func (d *Dispatcher) selfMember(ctx context.Context, groupID int64) map[string]a
 
 // selfRole 推导机器人在群里的角色。
 //
-// 云湖没有群主与管理员这类身份，机器人拿到的是逐项授予的管理权限，因此只要持有
-// 任意一项管理权限就按管理员上报。每次调用都查询群信息，不做缓存：群主调整权限
-// 的时机常常就是插件报告权限不足之后，缓存会让刚授予的权限继续被拒绝。
+// 云湖没有群主与管理员这类身份，机器人拿到的是逐项授予的管理权限。持有标签管理
+// 权限时按群主上报：QQ 里设置专属头衔是群主专属操作，云湖把它单独拆成一个开关，
+// 拿到开关的机器人在这件事上等价于群主，按管理员上报会让只认群主的插件继续拒绝。
+// 其余权限按管理员上报。
+//
+// 每次调用都查询群信息，不做缓存：群主调整权限的时机常常就是插件报告权限不足
+// 之后，缓存会让刚授予的权限继续被拒绝。
 func (d *Dispatcher) selfRole(ctx context.Context, groupID int64) string {
 	if d.API == nil {
 		return roleMember
@@ -198,6 +202,9 @@ func (d *Dispatcher) selfRole(ctx context.Context, groupID int64) string {
 	if err != nil {
 		d.logger().Warn("查询群权限失败，机器人角色按普通成员上报", "group_id", groupID, "err", err)
 		return roleMember
+	}
+	if d.Tags.ReportOwner && info.Permissions.GroupTagManage {
+		return roleOwner
 	}
 	if info.Permissions.CanManage() {
 		return roleAdmin

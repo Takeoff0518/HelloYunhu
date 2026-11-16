@@ -239,6 +239,12 @@ type Tags struct {
 	AutoCreate bool `yaml:"auto_create"`
 	// Color 是自动创建标签时使用的颜色，格式为 #RRGGBB。
 	Color string `yaml:"color"`
+	// ReportOwner 表示持有标签管理权限的机器人按群主上报。
+	//
+	// QQ 里设置专属头衔是群主专属操作，只认群主的插件会先检查机器人够不够格。云湖
+	// 把这件能力拆成一个开关，拿到开关的机器人在这件事上等价于群主。关掉之后这类
+	// 机器人按管理员上报，设置头衔会被只认群主的插件拒绝。
+	ReportOwner bool `yaml:"report_owner"`
 	// SpecialTitle 是标准接口 set_group_special_title 的行为。
 	SpecialTitle SpecialTitle `yaml:"special_title"`
 }
@@ -475,8 +481,9 @@ func Default() *Config {
 			Concurrency:     defaultConcurrency,
 		},
 		Tags: Tags{
-			AutoCreate: true,
-			Color:      defaultTagColor,
+			AutoCreate:  true,
+			Color:       defaultTagColor,
+			ReportOwner: true,
 			SpecialTitle: SpecialTitle{
 				Mode:         TagModeReplace,
 				ClearOnEmpty: true,

@@ -24,6 +24,11 @@ type TagOptions struct {
 	Replace bool
 	// ClearOnEmpty 表示头衔置空时解绑该用户的全部标签。
 	ClearOnEmpty bool
+	// ReportOwner 表示持有标签管理权限的机器人按群主上报。
+	//
+	// QQ 里设置专属头衔是群主专属操作。关掉之后这类机器人按管理员上报，只认群主
+	// 的插件会继续拒绝设置头衔。
+	ReportOwner bool
 }
 
 // tagParams 是标签类接口的公共参数。

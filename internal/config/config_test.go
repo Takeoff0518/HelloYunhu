@@ -41,6 +41,9 @@ func TestParseAppliesDefaults(t *testing.T) {
 	if !cfg.Tags.AutoCreate || cfg.Tags.Color != "#03A9F4" {
 		t.Errorf("群标签默认值为 %+v", cfg.Tags)
 	}
+	if !cfg.Tags.ReportOwner {
+		t.Error("默认应按群主上报持有标签管理权限的机器人")
+	}
 	if cfg.Tags.SpecialTitle.Mode != TagModeReplace || !cfg.Tags.SpecialTitle.ClearOnEmpty {
 		t.Errorf("头衔默认值为 %+v", cfg.Tags.SpecialTitle)
 	}
