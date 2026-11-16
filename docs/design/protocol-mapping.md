@@ -55,6 +55,9 @@
 | `delete_msg` | `POST /bot/recall` | 已实现，依赖进程内的会话归属 |
 | `set_group_ban` | `POST /group/gag-member` | 已实现，需要禁言权限 |
 | `set_group_kick` | `POST /group/remove-member` | 已实现，需要移除成员权限 |
+| `set_group_special_title` | 群标签的绑定与解绑 | 已实现，语义由 `tags.special_title` 决定 |
+| `yunhu_get_group_tags`、`yunhu_create_group_tag`、`yunhu_edit_group_tag`、`yunhu_delete_group_tag` | `/group/tag` 下对应接口 | 已实现，扩展接口 |
+| `yunhu_add_group_member_tag`、`yunhu_remove_group_member_tag` | `/group/tag/user-relate` 与 `user-relate-cancel` | 已实现，扩展接口 |
 | `get_image` | 下载到本地 | 未实现 |
 | 其它 | 返回 `retcode=1404` 与说明 | 默认行为 |
 
@@ -85,6 +88,38 @@
 推导每次都查询 `/group/info`，不做缓存。群主调整权限的时机常常就是插件报告权限不足之后，缓存会让刚授予的权限在一段时间内继续被拒绝。查询失败时按 `member` 上报并记录一条警告，不猜测 `admin`。
 
 写操作被平台拒绝后追加一次群信息查询，如果对应的开关为假，就把说明写成「机器人在群 695367192 没有禁言权限，请在云湖群后台为机器人授予 allowGagMember」。这里不做前置拦截，理由与不做缓存相同：平台是权限的权威，本程序只负责把失败的原因说清楚。
+
+### 2.2 群标签与专属头衔
+
+云湖用群标签表达 QQ 的专属头衔，但数据模型不同：标签定义属于群，成员与标签的关系单独存储，一个成员可以挂多个标签。六个接口都在 `/group/tag` 下。
+
+| 用途 | 接口 | 需要标签管理权限 |
+|---|---|---|
+| 创建标签 | `POST /group/tag/create` | 是 |
+| 标签列表 | `POST /group/tag/list` | 否 |
+| 修改标签 | `POST /group/tag/edit` | 是 |
+| 删除标签 | `POST /group/tag/delete` | 是 |
+| 给成员加标签 | `POST /group/tag/user-relate` | 是 |
+| 移除成员标签 | `POST /group/tag/user-relate-cancel` | 是 |
+
+标签用名称做标识，没有数字标识；名称最长 9 个字符，按字符数计算，九个汉字可以设置成功。
+
+映射上只有 `set_group_special_title` 有对应关系，另外六个操作以带 `yunhu_` 前缀的扩展接口提供。前缀的用途是避免与将来可能出现的标准接口重名，QQ 本身也有群头衔这个概念。
+
+| `set_group_special_title` 的取值 | 处理 |
+|---|---|
+| 非空，`mode` 为 `replace` | 绑定同名标签，再解绑该成员其余标签，保证只剩这一个 |
+| 非空，`mode` 为 `append` | 只绑定同名标签，不动已有标签 |
+| 空，`clear_on_empty` 为真 | 解绑该成员的全部标签 |
+| 空，`clear_on_empty` 为假 | 返回 1500 与说明，不做改动 |
+| 标签不存在，`auto_create` 为真 | 按 `tags.color` 创建同名标签后绑定 |
+| 标签不存在，`auto_create` 为假 | 返回 1500，说明里列出已有标签 |
+
+替换采用先绑定后解绑的顺序。目标标签先绑上，用户不会出现没有头衔的中间态；绑定失败时直接返回，旧标签一个都没动。
+
+置空与替换的尾部都是逐个解绑。程序读不到成员身上有哪些标签，只能把群标签列表整个遍历一遍，调用次数等于标签数量。单个标签解绑失败不影响其余标签，全部失败才返回错误。
+
+`duration` 没有对应语义，记录日志后忽略。
 
 ## 3. 消息段映射
 
@@ -195,6 +230,7 @@
 | 云湖头像地址 | 形如 `https://chat-img.jwznb.com/8448fe….jpg`，带 `Referer: https://myapp.jwznb.com` 才能取到，缺少时返回 403；301 跳到 `chat-img3.jwznb.com` 后是 `.webp` 文件，取回类型为 `image/webp` | 与媒体 CDN 同一条来源规则，客户端直接下载会失败，因此需要由本程序代理；地址后缀与真实格式无关，代理解码后转成 JPEG 或 PNG |
 | webp 头像在客户端的表现 | PatPat 插件读取头像后抛 `java.lang.NullPointerException: Cannot invoke "java.awt.image.BufferedImage.getWidth()" because "avatarImage" is null` | Java 的 `ImageIO` 不支持 webp，读到 null；这也是代理必须转码的原因 |
 | `POST /bot/send`，图片内容带 `parentId` | 请求成功并返回 `messageInfo.msgId`，撤回同样成功 | `parentId` 与内容类型无关，引用可以挂在图片消息上，不必退化成一条文本 |
+| 群标签名称的长度 | 九个汉字可以设置成功 | 长度按字符数计算，不是字节数，因此校验也按字符数做 |
 
 代码同时把 `code` 为 0 与 1 视为成功，避免不同接口编码不一致时误判。`data` 结构已确认的接口有 `/bot/info`、`/bot/send`、`/bot/groups`、`/group/info`、`/group/members` 与三个上传接口；成员字段为 `userId`、`nickname`、`groupNickname` 与 `userLevel`。
 
