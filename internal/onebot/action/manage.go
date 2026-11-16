@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	obmodel "github.com/Takeoff0518/HelloYunhu/internal/onebot/model"
+	yunhumodel "github.com/Takeoff0518/HelloYunhu/internal/yunhu/model"
 )
 
 // deleteParams 是 delete_msg 的参数。
@@ -95,7 +96,8 @@ func (d *Dispatcher) setGroupBan(ctx context.Context, params json.RawMessage) (a
 		)
 	}
 	if err := d.API.GagMember(ctx, strconv.FormatInt(value.GroupID, 10), strconv.FormatInt(value.UserID, 10), duration); err != nil {
-		return nil, fmt.Errorf("禁言成员: %w", err)
+		return nil, d.explainPermission(ctx, value.GroupID, "禁言", "allowGagMember",
+			func(p yunhumodel.Permissions) bool { return p.GagMember }, err)
 	}
 
 	d.logger().Debug("已设置禁言", "group_id", value.GroupID, "user_id", value.UserID, "duration", duration)
@@ -137,11 +139,38 @@ func (d *Dispatcher) setGroupKick(ctx context.Context, params json.RawMessage) (
 	}
 
 	if err := d.API.RemoveMember(ctx, strconv.FormatInt(value.GroupID, 10), strconv.FormatInt(value.UserID, 10)); err != nil {
-		return nil, fmt.Errorf("移除群成员: %w", err)
+		return nil, d.explainPermission(ctx, value.GroupID, "移除成员", "allowRemoveMember",
+			func(p yunhumodel.Permissions) bool { return p.RemoveMember }, err)
 	}
 
 	d.logger().Debug("已移出群成员", "group_id", value.GroupID, "user_id", value.UserID)
 	return map[string]any{}, nil
+}
+
+// explainPermission 在写操作被拒绝后查询群权限，把权限不足的原因写进说明。
+//
+// 不做前置检查：群主随时可以调整权限，前置检查会把刚授予的权限挡在外面。平台
+// 拒绝之后再确认缺的是哪一项，结论只用于解释失败。
+func (d *Dispatcher) explainPermission(ctx context.Context, groupID int64, action, field string, granted func(yunhumodel.Permissions) bool, err error) error {
+	if d.API == nil {
+		return fmt.Errorf("%s: %w", action, err)
+	}
+
+	info, lookupErr := d.API.GroupInfo(ctx, strconv.FormatInt(groupID, 10))
+	if lookupErr != nil || granted(info.Permissions) {
+		return fmt.Errorf("%s: %w", action, err)
+	}
+
+	d.logger().Warn("写操作失败：机器人没有该项权限",
+		"group_id", groupID,
+		"action", action,
+		"permission", field,
+	)
+
+	return &obmodel.ActionError{
+		Retcode: obmodel.RetcodeServerError,
+		Wording: fmt.Sprintf("机器人在群 %d 没有%s权限，请在云湖群后台为机器人授予 %s", groupID, action, field),
+	}
 }
 
 // parseManageParams 解析群管理类接口的参数。
