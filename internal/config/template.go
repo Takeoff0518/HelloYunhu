@@ -85,6 +85,17 @@ compat:
   gensokyo:
     enabled: false
 
+# 群标签。云湖用群标签表达 QQ 的专属头衔。
+tags:
+  # 设置头衔时标签不存在就自动创建。
+  auto_create: true
+  color: "#03A9F4"
+  special_title:
+    # replace 表示设置后只剩这一个标签，append 表示只追加。
+    mode: replace
+    # 头衔置空时解绑成员的全部标签。
+    clear_on_empty: true
+
 diagnostics:
   enabled: false
   listen: 127.0.0.1:9090

@@ -60,6 +60,16 @@ const (
 	appNameCompat  = "gensokyo"
 )
 
+// 群标签的默认取值，以及 set_group_special_title 的两种语义。
+const (
+	// defaultTagColor 是自动创建标签时使用的颜色。
+	defaultTagColor = "#03A9F4"
+	// TagModeReplace 表示设置头衔时解绑该用户的其余标签，保证只剩一个。
+	TagModeReplace = "replace"
+	// TagModeAppend 表示设置头衔时只追加，不动已有标签。
+	TagModeAppend = "append"
+)
+
 // 事件接收方式。
 const (
 	// ReceiveWebsocket 只用订阅连接接收事件。
@@ -95,6 +105,8 @@ type Config struct {
 	Proxy Proxy `yaml:"proxy"`
 	// Compat 是给非标准客户端准备的兼容设置。
 	Compat Compat `yaml:"compat"`
+	// Tags 是群标签相关的设置。
+	Tags Tags `yaml:"tags"`
 	// Diagnostics 是只读诊断接口的设置。
 	Diagnostics Diagnostics `yaml:"diagnostics"`
 }
@@ -212,6 +224,38 @@ type Compat struct {
 type Gensokyo struct {
 	// Enabled 是兼容模式的唯一开关。
 	Enabled bool `yaml:"enabled"`
+}
+
+// Tags 是群标签相关的设置。
+//
+// 云湖把群标签当作群级资源：每个群有一组标签定义，成员与标签的关系单独存储。
+// 这些设置只影响标准接口 set_group_special_title 的行为，扩展接口不受约束。
+type Tags struct {
+	// AutoCreate 表示设置头衔时标签不存在就自动创建。
+	//
+	// 打开之后插件设置任意头衔都能生效，不需要群主事先建好同名标签；代价是标签
+	// 列表里会出现插件用过的一次性名字。关闭时按标签不存在报错，并在说明里列出
+	// 当前已有的标签。
+	AutoCreate bool `yaml:"auto_create"`
+	// Color 是自动创建标签时使用的颜色，格式为 #RRGGBB。
+	Color string `yaml:"color"`
+	// SpecialTitle 是标准接口 set_group_special_title 的行为。
+	SpecialTitle SpecialTitle `yaml:"special_title"`
+}
+
+// SpecialTitle 是标准接口 set_group_special_title 的行为。
+//
+// OneBot 的这个接口只给一个字符串，而云湖允许一个成员挂多个标签，因此需要说明
+// 用哪一种语义。
+type SpecialTitle struct {
+	// Mode 取 replace 或 append。replace 表示设置后只剩这一个标签，与 QQ 的
+	// 单值头衔一致；append 表示只追加，不动成员已有的标签。
+	Mode string `yaml:"mode"`
+	// ClearOnEmpty 表示头衔置空时解绑该成员的剩余全部标签。
+	//
+	// 为假时置空返回错误而不是静默成功：调用方以为清掉了、实际没清，比报错更
+	// 难排查。
+	ClearOnEmpty bool `yaml:"clear_on_empty"`
 }
 
 // Media 是两个方向的媒体体积上限。
@@ -430,6 +474,14 @@ func Default() *Config {
 			MediaMax:        Size(defaultMediaMax),
 			Concurrency:     defaultConcurrency,
 		},
+		Tags: Tags{
+			AutoCreate: true,
+			Color:      defaultTagColor,
+			SpecialTitle: SpecialTitle{
+				Mode:         TagModeReplace,
+				ClearOnEmpty: true,
+			},
+		},
 		Diagnostics: Diagnostics{
 			Listen: defaultDiagnoseAddr,
 		},
@@ -492,6 +544,11 @@ func (c *Config) normalize() {
 
 	if c.Proxy.Enabled && strings.TrimSpace(c.Proxy.BaseURL) == "" {
 		c.Proxy.BaseURL = deriveBaseURL(c.Proxy.Listen)
+	}
+
+	// 颜色比较时不分大小写，存成大写便于日志与配置互相对照。
+	if color := strings.TrimSpace(c.Tags.Color); color != "" {
+		c.Tags.Color = strings.ToUpper(color)
 	}
 }
 
@@ -563,6 +620,7 @@ func (c *Config) Validate() error {
 	problems = append(problems, c.validateMedia()...)
 	problems = append(problems, c.validateProxy()...)
 	problems = append(problems, c.validateCompat()...)
+	problems = append(problems, c.validateTags()...)
 
 	return errors.Join(problems...)
 }
@@ -636,6 +694,43 @@ func (c *Config) validateCompat() []error {
 			"compat.gensokyo.enabled: 需要 proxy.enabled 同时为真，否则客户端拿到的头像地址无法访问")}
 	}
 	return nil
+}
+
+// validateTags 校验群标签的设置。
+//
+// 颜色与语义在自动创建标签、设置头衔时才会用到，但写法本身总是校验，避免打开
+// 自动创建之后才发现拼写错误。
+func (c *Config) validateTags() []error {
+	var problems []error
+
+	if !isHexColor(c.Tags.Color) {
+		problems = append(problems, fmt.Errorf(
+			"tags.color: %q 需要写成 #RRGGBB，例如 %s", c.Tags.Color, defaultTagColor))
+	}
+
+	switch c.Tags.SpecialTitle.Mode {
+	case TagModeReplace, TagModeAppend:
+	default:
+		problems = append(problems, fmt.Errorf(
+			"tags.special_title.mode: %q 不受支持，可选 replace 或 append", c.Tags.SpecialTitle.Mode))
+	}
+
+	return problems
+}
+
+// isHexColor 判断是否为 #RRGGBB 形式。
+func isHexColor(color string) bool {
+	if len(color) != 7 || color[0] != '#' {
+		return false
+	}
+	for _, char := range color[1:] {
+		switch {
+		case char >= '0' && char <= '9', char >= 'A' && char <= 'F', char >= 'a' && char <= 'f':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // deriveBaseURL 按监听地址推导客户端访问头像时使用的前缀。
