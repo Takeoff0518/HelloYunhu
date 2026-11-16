@@ -164,6 +164,11 @@ func At(qq int64) OutSegment {
 	return OutSegment{Type: "at", Data: AtData{QQ: qq}}
 }
 
+// Reply 构造引用段，id 是被引用消息的整数标识。
+func Reply(id int64) OutSegment {
+	return OutSegment{Type: "reply", Data: ReplyData{ID: IDValue(id)}}
+}
+
 // InSegment 是框架发来的消息段，Data 保持原始内容，由具体接口解析。
 type InSegment struct {
 	Type string          `json:"type"`

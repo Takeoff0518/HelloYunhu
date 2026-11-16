@@ -109,6 +109,13 @@ func (c *Converter) messageEvent(ctx context.Context, envelope model.Envelope) (
 
 	segments, rawMessage := c.segments(ctx, &payload.Message, command)
 
+	// 云湖在被引用消息上只给出 parentId，框架需要的是整数标识，因此按映射表换算
+	// 后把 reply 段排在消息开头。父消息不在映射表里时照样分配一个新标识，框架至少
+	// 能知道这条消息带了引用；它随后调 get_msg 时缓存里没有内容，按现有约定回 1404。
+	if reply := c.replySegment(ctx, payload.Message.ParentID); reply != nil {
+		segments = append([]obmodel.OutSegment{*reply}, segments...)
+	}
+
 	event := &obmodel.MessageEvent{
 		PostType:   obmodel.PostTypeMessage,
 		SubType:    "normal",
@@ -155,6 +162,29 @@ func (c *Converter) messageEvent(ctx context.Context, envelope model.Envelope) (
 	}
 
 	return event, true, nil
+}
+
+// replySegment 为带引用的消息生成 reply 段。
+//
+// 被引用消息的标识来自事件里的 parentId。映射表里没有这条消息时按新标识分配，
+// 让框架仍能看出消息带了引用；映射失败时返回空，调用方忽略引用。
+func (c *Converter) replySegment(ctx context.Context, parentID string) *obmodel.OutSegment {
+	if parentID == "" {
+		return nil
+	}
+
+	messageID, err := c.Messages.MessageID(ctx, parentID)
+	if err != nil {
+		c.logger().Warn("引用消息的标识无法映射，已忽略引用", "parent_id", parentID, "err", err)
+		return nil
+	}
+
+	// 平台是否在每条带引用的消息上填写 parentId 尚未在真实事件里确认，
+	// 这条日志用于确认收到的事件确实带了引用。
+	c.logger().Debug("消息带引用", "parent_id", parentID, "message_id", messageID)
+
+	segment := obmodel.Reply(messageID)
+	return &segment
 }
 
 // segments 把消息内容转换为消息段与原始文本。
