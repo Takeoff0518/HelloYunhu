@@ -13,10 +13,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Takeoff0518/HelloYunhu/internal/proxypath"
 )
 
 // PathPrefix 是头像代理的固定路径前缀，后面直接跟整数标识。
-const PathPrefix = "/avatar/"
+const PathPrefix = proxypath.Avatar
 
 // 默认值。
 const (
@@ -292,43 +294,4 @@ func isYunhuHost(host string) bool {
 		}
 	}
 	return false
-}
-
-// Run 启动头像代理直到上下文结束。
-func (p *Proxy) Run(ctx context.Context, listen string) error {
-	server := &http.Server{
-		Addr:              listen,
-		Handler:           p,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
-	}
-
-	done := make(chan struct{})
-	var serveErr error
-	go func() {
-		defer close(done)
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			serveErr = err
-			p.logger().Error("头像代理退出", "listen", listen, "err", err)
-		}
-	}()
-
-	p.logger().Info("头像代理已启动", "listen", listen, "path", PathPrefix+"<标识>")
-
-	select {
-	case <-ctx.Done():
-	case <-done:
-	}
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		return err
-	}
-
-	// 端口被占用时 ListenAndServe 立即返回，这里把错误交回上层，由启动流程
-	// 记录下来并停止进程，而不是留下一个看起来在跑、实际没有代理的实例。
-	<-done
-	return serveErr
 }

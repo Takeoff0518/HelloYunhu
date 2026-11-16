@@ -4,15 +4,18 @@
 
 ### 功能
 
-- 新增兼容模式 `compat.gensokyo`，默认关闭。开启后 `get_version_info` 自报 `gensokyo`，并提供非标准接口 `get_avatar` 与云湖头像代理，供 Overflow 这类只在协议端名字等于 `gensokyo` 时才取头像的 mirai 客户端显示云湖里的真实头像。代理在 `compat.gensokyo.listen` 上提供 `/avatar/<标识>`，取图时附带来源头，单张上限 1 MiB，缓存 6 小时，未知用户回退到灰色占位图。
+- 新增兼容模式 `compat.gensokyo`，默认关闭。开启后 `get_version_info` 自报 `gensokyo`，并提供非标准接口 `get_avatar`，供 Overflow 这类只在协议端名字等于 `gensokyo` 时才取头像的 mirai 客户端显示云湖里的真实头像。头像地址由代理服务提供，开启本项要求 `proxy.enabled` 同时为真。
 - 云湖头像的实际内容是 webp，地址却以 `.jpg` 结尾，而 Java 的 `ImageIO` 不认识 webp。代理在返回前统一转码：不透明的图转成 JPEG，带透明通道的转成 PNG。测试用的 1080×1080 头像由 36 KB 的 webp 转成 86 KB 的 JPEG。
-- 关闭时行为与 0.1.1 一致：`app_name` 为 `HelloYunhu`，`get_avatar` 返回 1404，头像代理不启动。
+- 新增代理服务 `proxy`。开启后在 `proxy.listen` 上提供 `/media/<token>` 与 `/avatar/<标识>`，取图时附带云湖 CDN 要求的来源头，客户端不再需要自己处理 403。媒体支持 `Range`，小于 `stream_threshold` 的先取完再返回，超过的边取边发，单次上限与并发数可调。
+- 消息段的 `url` 改为指向代理地址；代理未启用时不输出该字段。超过 `media.inline_limit` 的媒体不再只给一个打不开的原始地址，而是给出代理地址。
+- 配置结构调整：`media` 与 `proxy` 成为独立段落，`compat.gensokyo` 只保留 `enabled`。开启兼容模式要求 `proxy.enabled` 同时为真，否则配置校验报错。
+- 新增配置项：`media.inline_limit`、`media.read_limit`、`proxy.*`。体积统一写成 `20MiB`、`1GiB` 这类带单位的形式。
 
 ### 修复
 
 - 框架把引用与图片放在同一条消息里时（例如 `[CQ:reply][CQ:image]`），引用会被丢弃，云湖侧看不到引用。现在把引用挂到图片消息上，实测云湖接受图片消息携带 `parentId`。
 - 接收方向忽略了事件里的 `parentId`，带引用的消息在框架侧显示成普通消息。现在按映射表换算出被引用消息的整数标识，生成 `reply` 段放在消息开头；被引用消息不在缓存时，框架调用 `get_msg` 仍按约定返回 1404。
-- 媒体内容已经内联成 `base64://` 时，消息段里仍带着云湖的网络地址，框架在引用预览这类场景会去下载它，而那个地址缺来源头返回 403。现在内联时不再输出 `url`，只有下载失败、只能给出地址时才保留。
+- 媒体内容已经内联成 `base64://` 时，消息段里仍带着云湖的网络地址，框架在引用预览这类场景会去下载它，而那个地址缺来源头返回 403。现在代理启用时给出代理地址，未启用时不给地址。
 
 ## 0.1.1 - 2026-11-16
 

@@ -4,17 +4,14 @@ package avatar
 
 import (
 	"bytes"
-	"context"
 	"image"
 	"image/color"
 	"image/png"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"sync/atomic"
 	"testing"
-	"time"
 )
 
 // testPNG 返回一张 2×2 的 PNG，用于判断代理是否原样转发。
@@ -217,24 +214,5 @@ func TestProxyHead(t *testing.T) {
 	}
 	if recorder.Body.Len() != 0 {
 		t.Error("HEAD 请求不应返回内容")
-	}
-}
-
-func TestRunReportsBindFailure(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("占用端口失败: %v", err)
-	}
-	defer func() {
-		_ = listener.Close()
-	}()
-
-	proxy := &Proxy{Store: NewStore()}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// 端口已被占用时应当把错误交回上层，而不是安静地不提供代理。
-	if err := proxy.Run(ctx, listener.Addr().String()); err == nil {
-		t.Fatal("端口被占用时应返回错误")
 	}
 }
