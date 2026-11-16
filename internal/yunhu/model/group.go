@@ -6,8 +6,8 @@ import "encoding/json"
 
 // GroupInfo 是 GET /group/info 返回的群信息。
 //
-// 平台返回的群名字段是 name，早期按 groupName 实现，实测后两种写法都接受。其余
-// 字段首版不使用。
+// 平台返回的群名字段是 name，早期按 groupName 实现，实测后两种写法都接受。头像、
+// 简介、封禁状态等字段首版不使用。
 type GroupInfo struct {
 	// GroupID 是群标识。
 	GroupID string `json:"-"`
@@ -15,15 +15,18 @@ type GroupInfo struct {
 	GroupName string `json:"-"`
 	// Headcount 是群成员数量。
 	Headcount int `json:"-"`
+	// Permissions 是机器人在这个群获得的管理权限，机器人不在群中时全为假。
+	Permissions Permissions `json:"-"`
 }
 
 // UnmarshalJSON 解析群信息，群名称同时接受 name 与 groupName。
 func (g *GroupInfo) UnmarshalJSON(raw []byte) error {
 	var value struct {
-		GroupID   string `json:"groupId"`
-		GroupName string `json:"groupName"`
-		Name      string `json:"name"`
-		Headcount int    `json:"headcount"`
+		GroupID     string      `json:"groupId"`
+		GroupName   string      `json:"groupName"`
+		Name        string      `json:"name"`
+		Headcount   int         `json:"headcount"`
+		Permissions Permissions `json:"permissions"`
 	}
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return err
@@ -31,6 +34,7 @@ func (g *GroupInfo) UnmarshalJSON(raw []byte) error {
 
 	g.GroupID = value.GroupID
 	g.Headcount = value.Headcount
+	g.Permissions = value.Permissions
 	g.GroupName = value.GroupName
 	if g.GroupName == "" {
 		g.GroupName = value.Name
