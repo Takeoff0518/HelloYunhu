@@ -262,7 +262,52 @@ Overflow 这类 mirai 客户端要为每个成员显示头像，但 OneBot v11 �
 
 这个开关只对按名字判断能力的客户端有效。AstrBot 与 NoneBot2 不调用 `get_avatar`，开启之后它们的头像仍然按整数标识去 QQ 头像服务取。
 
-## 12. diagnostics
+## 12. tags
+
+这一段控制群标签与 `set_group_special_title` 的行为。云湖用群标签表达 QQ 的专属头衔，一个成员可以挂多个标签。
+
+```yaml
+tags:
+  auto_create: true
+  color: "#03A9F4"
+  special_title:
+    mode: replace
+    clear_on_empty: true
+```
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `auto_create` | 布尔 | `true` | 设置头衔时标签不存在就自动创建 |
+| `color` | 字符串 | `#03A9F4` | 自动创建标签时使用的颜色，格式为 `#RRGGBB` |
+| `special_title.mode` | 字符串 | `replace` | `replace` 表示设置后只剩这一个标签，`append` 表示只追加 |
+| `special_title.clear_on_empty` | 布尔 | `true` | 头衔置空时解绑该成员的全部标签 |
+
+### 12.1 两种语义怎么选
+
+| 取值 | 适合的场景 |
+|---|---|
+| `replace` | 插件按 QQ 的单值头衔写，期望最后一次设置生效 |
+| `append` | 群里的标签由人工维护，不希望插件碰掉成员已有的标签 |
+
+`clear_on_empty` 与 `mode` 是正交的。`replace` 加 `clear_on_empty` 为真是与 QQ 一致的行为：设置即覆盖，置空即清除。`append` 加 `clear_on_empty` 为假时，机器人只能加标签，从不删除，适合标签由群主统一管理的群。
+
+`clear_on_empty` 为假时置空返回 1500 与说明，不静默成功。调用方以为清掉了、实际没清，比直接报错更难排查。
+
+### 12.2 自动创建
+
+打开 `auto_create` 之后，插件设置任意头衔都能生效，不需要群主事先建好同名标签。新建的标签使用 `color`，描述留空，排序由平台决定，并在日志里记一条「已自动创建群标签」，含群标识与标签名，便于事后清理。
+
+关闭之后，标签不存在时返回 1500，说明里列出群内已有的标签，例如「群 695367192 没有名为「新人」的标签，现有标签：VIP用户、活跃用户」。
+
+自动创建只作用于标准接口。六个 `yunhu_*` 扩展接口不会创建标签，标签不存在时直接报错。
+
+### 12.3 代价
+
+标签没有读取成员关联的接口，程序无法知道某个成员身上有哪些标签。因此替换与清空都是逐个解绑，调用次数等于群内标签数量，全部经过每秒十次的限流。群内标签很多时，一次设置可能需要几秒。
+
+替换采用先绑定后解绑的顺序，成员不会出现没有头衔的中间态，绑定失败时也不会动到旧标签。
+
+## 13. diagnostics
 
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
@@ -278,7 +323,7 @@ Overflow 这类 mirai 客户端要为每个成员显示头像，但 OneBot v11 �
 
 `/status` 的字段依次是 `version`、`started_at`、`uptime_seconds`、`bot_id`、`nickname`、`connections`（每项含 `name` 与 `online`）、`events_received` 与 `actions_handled`。接口不接受写请求，也不输出消息正文与用户标识，因此只在本机监听即可，需要远程查看时通过 SSH 端口转发访问。
 
-## 13. 常见组合
+## 14. 常见组合
 
 单框架、订阅方式，即首次接入的最小配置：
 
@@ -332,7 +377,7 @@ onebot:
 
 多个云湖机器人：每个机器人一份配置、一个进程、一个独立的工作目录。`storage.path` 与日志目录都相对于工作目录，分开之后各机器人的数据库与日志互不影响。
 
-## 14. 校验错误对照
+## 15. 校验错误对照
 
 | 报错 | 原因 |
 |---|---|
@@ -353,5 +398,7 @@ onebot:
 | `proxy.media_max: 不能小于 proxy.stream_threshold` | 单次上限比阈值还小 |
 | `proxy.concurrency: 取 1 到 32` | 并发数超出范围 |
 | `compat.gensokyo.enabled: 需要 proxy.enabled 同时为真` | 开启了兼容模式但没有启动代理 |
+| `tags.color: "…" 需要写成 #RRGGBB` | 颜色写成了 `蓝色` 或者少了 `#` |
+| `tags.special_title.mode: "…" 不受支持` | 取值超出 `replace` 与 `append` |
 | `体积 "8" 缺少单位` | 体积没有写单位，应写成 `8MiB` |
 | `field … not found in type config.Config` | 字段名拼错，或者沿用了旧版结构 |

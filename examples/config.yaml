@@ -107,6 +107,19 @@ compat:
     # 本项不影响图片、文件、视频与语音的转发，那些由 proxy 单独控制。
     enabled: false
 
+# 群标签。云湖用群标签表达 QQ 的专属头衔：每个群有一组标签，成员可以挂多个。
+tags:
+  # 设置头衔时标签不存在就自动创建。关闭后标签不存在会报错并列出已有标签。
+  auto_create: true
+  # 自动创建标签时使用的颜色，格式为 #RRGGBB。
+  color: "#03A9F4"
+  special_title:
+    # replace 表示设置头衔后成员只剩这一个标签，与 QQ 的单值头衔一致；
+    # append 表示只追加，不动成员已有的标签。
+    mode: replace
+    # 头衔置空时解绑该成员的全部标签。为假时置空返回错误，不做改动。
+    clear_on_empty: true
+
 # 只读诊断接口。默认关闭，开启后提供 /healthz 与 /status 两个端点。
 diagnostics:
   enabled: false

@@ -107,7 +107,7 @@ level=INFO msg=接口调用未成功 action=delete_msg retcode=1404 wording="消
 
 `get_version_info` 返回的 `app_name` 默认为 `HelloYunhu`。如果框架的日志、`/overflow` 这类状态命令显示的是 `gensokyo`，说明配置里开启了 `compat.gensokyo.enabled`。
 
-这不是接错了客户端，也不是程序改名。兼容模式为了让只认这个名字的客户端启用头像扩展，会主动自报该名字，详见[配置说明](configuration.md)第 9 节。不需要云湖头像时把 `enabled` 改成 `false` 即可恢复。
+这不是接错了客户端，也不是程序改名。兼容模式为了让只认这个名字的客户端启用头像扩展，会主动自报该名字，详见[配置说明](configuration.md)第 11 节。不需要云湖头像时把 `enabled` 改成 `false` 即可恢复。
 
 ## 3. 事件接收
 
@@ -198,6 +198,16 @@ level=WARN msg=转换事件失败，已跳过 event_type=message.receive.normal 
 ### 禁言时长与请求的不一致
 
 平台只接受四个档位：600、3600、21600 与 43200 秒，另外 0 表示解禁，-1 表示永久。其它时长向上取到最近的档位，超过 43200 秒按 43200 秒处理，因此请求禁言一分钟实际生效十分钟。
+
+### 设置头衔没有效果，或者成员身上多出一个标签
+
+`set_group_special_title` 映射为云湖的群标签。默认语义是替换：设置之后该成员只剩这一个标签。插件设置多次而成员身上出现多个标签时，说明 `tags.special_title.mode` 改成了 `append`，改回 `replace` 即可。
+
+设置的头衔在群里没有出现时，按顺序检查三件事。机器人有没有被群主授予标签管理权限，缺少时说明里会写 `allowGroupTagManage`。群内有没有同名标签，`tags.auto_create` 为假时不会自动创建。标签名是否超过 9 个字符，超长会被直接拒绝。
+
+清空头衔时返回 1500 与 `clear_on_empty`，说明配置里关闭了这一行为，改成 `true` 即可。
+
+标签操作涉及的接口与返回格式见[扩展字段](extensions.md)第 7 节。
 
 ### 发送图片时报「文件类型必须为图片」
 

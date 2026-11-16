@@ -38,6 +38,12 @@ func TestParseAppliesDefaults(t *testing.T) {
 	if !cfg.Capabilities.CanSendImage || cfg.Capabilities.CanSendRecord {
 		t.Errorf("能力声明默认值为 %+v", cfg.Capabilities)
 	}
+	if !cfg.Tags.AutoCreate || cfg.Tags.Color != "#03A9F4" {
+		t.Errorf("群标签默认值为 %+v", cfg.Tags)
+	}
+	if cfg.Tags.SpecialTitle.Mode != TagModeReplace || !cfg.Tags.SpecialTitle.ClearOnEmpty {
+		t.Errorf("头衔默认值为 %+v", cfg.Tags.SpecialTitle)
+	}
 	if len(cfg.OneBot) != 1 {
 		t.Fatalf("连接数量为 %d", len(cfg.OneBot))
 	}
@@ -116,6 +122,32 @@ onebot:
 	}
 }
 
+// TestTagDefaultsSurvivePartialBlock 校验只写一部分字段时，其余字段保留默认值。
+func TestTagDefaultsSurvivePartialBlock(t *testing.T) {
+	const raw = minimalYAML + `
+tags:
+  color: "#ff0000"
+`
+	cfg, err := Parse([]byte(raw))
+	if err != nil {
+		t.Fatalf("Parse 返回错误: %v", err)
+	}
+
+	// 颜色统一存成大写，便于与日志对照。
+	if cfg.Tags.Color != "#FF0000" {
+		t.Errorf("颜色为 %q", cfg.Tags.Color)
+	}
+	if !cfg.Tags.AutoCreate {
+		t.Error("只写颜色时自动创建应保持默认的真")
+	}
+	if !cfg.Tags.SpecialTitle.ClearOnEmpty {
+		t.Error("只写颜色时清空头衔应保持默认的真")
+	}
+	if cfg.Tags.SpecialTitle.Mode != TagModeReplace {
+		t.Errorf("语义为 %q", cfg.Tags.SpecialTitle.Mode)
+	}
+}
+
 func TestValidationErrors(t *testing.T) {
 	cases := []struct {
 		name string
@@ -171,6 +203,16 @@ func TestValidationErrors(t *testing.T) {
 			name: "未知配置项",
 			raw:  minimalYAML + "instances:\n  - name: main\n",
 			want: "field instances not found",
+		},
+		{
+			name: "标签颜色格式错误",
+			raw:  minimalYAML + "tags:\n  color: 蓝色\n",
+			want: "tags.color",
+		},
+		{
+			name: "头衔语义非法",
+			raw:  minimalYAML + "tags:\n  special_title:\n    mode: merge\n",
+			want: "tags.special_title.mode",
 		},
 	}
 

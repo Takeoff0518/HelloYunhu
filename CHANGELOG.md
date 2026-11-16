@@ -11,6 +11,9 @@
 ### 功能
 
 - `get_group_info` 的响应增加 `yunhu_permissions` 扩展字段，保留五项权限的原始取值。
+- 支持群标签。`set_group_special_title` 映射为云湖的群标签接口，效果与 QQ 的专属头衔一致：设置非空值时绑定同名标签，默认还会解绑该成员其余标签；置空时解绑全部标签。标签名最长 9 个字符，平台按字符数计算。
+- 新增六个扩展接口管理群标签：`yunhu_get_group_tags`、`yunhu_create_group_tag`、`yunhu_edit_group_tag`、`yunhu_delete_group_tag`、`yunhu_add_group_member_tag` 与 `yunhu_remove_group_member_tag`。标签以名称为标识，扩展接口不会自动创建标签。
+- 新增配置段 `tags`：`auto_create` 控制标签不存在时是否自动创建，`color` 是自动创建使用的颜色（默认 `#03A9F4`），`special_title.mode` 在替换与追加之间选择，`special_title.clear_on_empty` 控制置空时是否解绑全部标签。
 
 ### 文档
 

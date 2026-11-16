@@ -148,7 +148,44 @@ OneBot 的 `role` 只有 `owner`、`admin`、`member` 三个取值，云湖的�
 
 头像地址形如 `http://主机:端口/avatar/<用户标识>`，与 `get_avatar` 返回的值一致。两段路径共用同一个监听端口，配置见[配置说明](configuration.md)。
 
-## 7. 行为差异
+## 7. 群标签与专属头衔
+
+云湖用群标签表达 QQ 的专属头衔。每个群有一组标签定义，成员与标签的关系单独存储，一个成员可以挂多个标签，这是与 QQ 最大的区别。
+
+`set_group_special_title` 映射到标签：
+
+| 参数 | 处理 |
+|---|---|
+| `special_title` 非空 | 按 `tags.special_title.mode` 处理：`replace` 先绑定该标签，再解绑该成员其余标签；`append` 只绑定 |
+| `special_title` 为空 | `tags.special_title.clear_on_empty` 为真时解绑该成员的全部标签，为假时返回 1500 与说明 |
+| `duration` | 云湖的标签没有时长概念，忽略 |
+
+标签不存在时，`tags.auto_create` 为真会按 `tags.color` 创建一个同名标签，为假时返回 1500 并列出群内已有的标签。标签名最长 9 个字符，平台按字符数计算，九个汉字可以设置成功。
+
+标准接口只有一个字符串，表达不了"再加一个标签而不动其他标签"，因此补六个扩展接口。
+
+| 接口 | 参数 | 返回 |
+|---|---|---|
+| `yunhu_get_group_tags` | `group_id` | 标签数组，每项含 `tag`、`desc`、`color`、`sort` |
+| `yunhu_create_group_tag` | `group_id`、`tag`、`color`、`desc`、`sort` | 空对象 |
+| `yunhu_edit_group_tag` | `group_id`、`tag`、`new_tag`、`color`、`desc`、`sort` | 空对象 |
+| `yunhu_delete_group_tag` | `group_id`、`tag` | 空对象 |
+| `yunhu_add_group_member_tag` | `group_id`、`user_id`、`tag` | 空对象 |
+| `yunhu_remove_group_member_tag` | `group_id`、`user_id`、`tag` | 空对象 |
+
+使用这些接口时要注意五点。
+
+标签用名称做标识，没有数字标识，改名只能调用 `yunhu_edit_group_tag`。
+
+`yunhu_edit_group_tag` 至少要给出 `new_tag`、`color`、`desc`、`sort` 中的一项。只改颜色时不要传 `sort`，否则排序值会被改成 0；`desc` 传空字符串表示清空描述，不传表示不改。
+
+扩展接口不会自动创建标签。标签不存在时直接返回错误，这是与标准接口的区别。
+
+标签列表接口只要求机器人在群中，其余五个写接口需要机器人在群后台获得 `allow_group_tag_manage`。
+
+程序读不到某个成员当前有哪些标签，没有任何接口能返回这层关系。因此"清空头衔"是把群标签列表逐个解绑，调用次数等于群内标签数量，全部经过每秒十次的限流。
+
+## 8. 行为差异
 
 下面这些不是新增字段，而是调用方需要知道的行为差异。
 
@@ -160,6 +197,7 @@ OneBot 的 `role` 只有 `owner`、`admin`、`member` 三个取值，云湖的�
 | 发送失败 | 不自动重试，重复发言的代价高于一次失败 |
 | `set_group_ban` | 平台只接受 600、3600、21600、43200 秒，0 解禁，-1 永久。其它时长为正时向上取到最近的档位，超过 43200 按 43200 处理 |
 | `set_group_kick` | `reject_add_request` 没有对应参数，记录日志后忽略 |
+| `set_group_special_title` | 映射为群标签，语义由 `tags.special_title` 决定，详见第 7 节 |
 | `get_msg` | 只覆盖本进程收到的消息，容量 512 条，重启后返回 1404 |
 | `get_group_member_info` | 查询其他人且没有成员列表权限时返回空对象，不返回错误 |
 | `get_group_member_list` | 没有成员列表权限时只返回机器人自己一条 |
@@ -173,7 +211,7 @@ OneBot 的 `role` 只有 `owner`、`admin`、`member` 三个取值，云湖的�
 | `@全体成员` | 云湖没有全体提及能力，`qq` 写成 `all` 时正文里输出「@全体成员」文字，不产生真实提及 |
 | Markdown、HTML | 收发两向都没有可用协议细节，接收给占位文本，发送降级为文本 |
 
-## 8. 返回码
+## 9. 返回码
 
 | `retcode` | `status` | 含义 |
 |---|---|---|

@@ -55,6 +55,8 @@ type Dispatcher struct {
 	AvatarBaseURL string
 	// Avatars 记录标识与云湖头像地址的对应关系，头像代理据此取图。
 	Avatars *avatar.Store
+	// Tags 是群标签相关的行为选项。
+	Tags TagOptions
 	// Logger 为空时丢弃日志。
 	Logger *slog.Logger
 }
@@ -108,6 +110,20 @@ func (d *Dispatcher) Handle(ctx context.Context, name string, params json.RawMes
 		return d.setGroupBan(ctx, params)
 	case "set_group_kick":
 		return d.setGroupKick(ctx, params)
+	case "set_group_special_title":
+		return d.setGroupSpecialTitle(ctx, params)
+	case "yunhu_get_group_tags":
+		return d.groupTags(ctx, params)
+	case "yunhu_create_group_tag":
+		return d.createGroupTag(ctx, params)
+	case "yunhu_edit_group_tag":
+		return d.editGroupTag(ctx, params)
+	case "yunhu_delete_group_tag":
+		return d.deleteGroupTag(ctx, params)
+	case "yunhu_add_group_member_tag":
+		return d.addGroupMemberTag(ctx, params)
+	case "yunhu_remove_group_member_tag":
+		return d.removeGroupMemberTag(ctx, params)
 	case "get_version_info":
 		return map[string]any{"app_name": d.appName(), "protocol_version": "v11"}, nil
 	case "get_avatar":

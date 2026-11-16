@@ -144,7 +144,13 @@ func runBot(ctx context.Context, cfg *config.Config, logger *slog.Logger, messag
 		AppName:       cfg.AppName(),
 		AvatarBaseURL: avatarBase,
 		Avatars:       avatarStore,
-		Logger:        log,
+		Tags: action.TagOptions{
+			AutoCreate:   cfg.Tags.AutoCreate,
+			Color:        cfg.Tags.Color,
+			Replace:      cfg.Tags.SpecialTitle.Mode == config.TagModeReplace,
+			ClearOnEmpty: cfg.Tags.SpecialTitle.ClearOnEmpty,
+		},
+		Logger: log,
 	}
 
 	connections := make([]connection, 0, len(cfg.OneBot))

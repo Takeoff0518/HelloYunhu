@@ -88,6 +88,13 @@ Webhook 的推送地址是 `http://<listen>/yunhu/<token>`，直接把这段填�
 | `delete_msg` | `POST /bot/recall` | `✓` | 依赖落库的会话归属，重启后仍可撤回；超出映射保留期后失效 |
 | `set_group_ban` | `POST /group/gag-member` | `部分` | 只接受 600、3600、21600、43200 秒，0 解禁，-1 永久 |
 | `set_group_kick` | `POST /group/remove-member` | `部分` | `reject_add_request` 没有对应参数，记日志后忽略 |
+| `set_group_special_title` | 群标签接口 | `部分` | 映射为群标签，替换或追加由 `tags.special_title.mode` 决定，见[扩展字段](extensions.md)第 7 节 |
+| `yunhu_get_group_tags` | `POST /group/tag/list` | `✓` | 扩展接口，只要求机器人在群中 |
+| `yunhu_create_group_tag` | `POST /group/tag/create` | `✓` | 扩展接口，需要标签管理权限 |
+| `yunhu_edit_group_tag` | `POST /group/tag/edit` | `✓` | 扩展接口，至少给出一项修改 |
+| `yunhu_delete_group_tag` | `POST /group/tag/delete` | `✓` | 扩展接口，需要标签管理权限 |
+| `yunhu_add_group_member_tag` | `POST /group/tag/user-relate` | `✓` | 扩展接口，只加不删，不自动创建标签 |
+| `yunhu_remove_group_member_tag` | `POST /group/tag/user-relate-cancel` | `✓` | 扩展接口，需要标签管理权限 |
 | `.handle_quick_operation` | 直接返回成功 | `✓` | 框架处理快速操作后的回调 |
 | `can_send_image` | 配置项 `capabilities.can_send_image` | `✓` | 默认回答真，可在配置里改成假 |
 | `can_send_record` | 配置项 `capabilities.can_send_record` | `✓` | 默认回答假。改成真只影响框架的判断，语音仍按文件发送 |
@@ -110,6 +117,10 @@ Webhook 的推送地址是 `http://<listen>/yunhu/<token>`，直接把这段填�
 **@ 的显示依赖昵称。** 平台的正文里必须出现 `@昵称` 才会渲染成提及，只给 `at` 数组时客户端显示数字标识。昵称来自收到过的消息事件，进程刚启动、还没见过这个人时，第一条 @ 会显示标识。
 
 **语音只能按文件发送。** 平台没有语音发送接口，发送 `record` 段时按文件上传，客户端表现为一个文件，需要点开才能收听。
+
+**专属头衔对应群标签，但成员可以有多个标签。** 云湖每个群有一组标签定义，成员与标签的关系单独存储。`set_group_special_title` 设置非空值时会绑定同名标签，`replace` 模式下还会解绑该成员的其余标签，`append` 模式下只绑定。置空时解绑全部标签，可以用 `tags.special_title.clear_on_empty` 关闭。标签不存在时默认自动创建，颜色由 `tags.color` 决定。程序读不到某个成员当前有哪些标签，清空只能把群标签逐个解绑，调用次数等于标签数量。
+
+**标签用名称做标识。** 没有数字标识，改名只能调用 `yunhu_edit_group_tag`。标签名最长 9 个字符，平台按字符数计算。
 
 **合并转发只能降级为文本。** 平台没有合并转发类型，也没有对应的接口。发送时把节点树逐行展开，嵌套内容缩进一层，每条节点写成「昵称: 正文」，节点里的图片、文件、语音用占位文字表示，原始结构无法还原。展开结果超过 2000 字符时按节点边界分段，多段时每段开头带「[合并转发 i/n]」。只带标识、没有内容的转发展开成一行「[空的合并转发]」。嵌套超过 8 层或节点超过 500 个时截断，并注明省略。
 
