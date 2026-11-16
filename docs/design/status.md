@@ -16,7 +16,9 @@ M0 至 M4 全部完成。`v0.1.0` 的标签已建但未推送；发现以 base64
 
 2026-11-16 收到 Overflow 的实测反馈：以 `base64://` 给出的图片发送失败，云湖返回 `-1 文件类型必须为图片`。原因在上传表单的文件名：读取环节把 base64 内容统一命名为 `upload.bin`，而云湖按文件名后缀判断上传类型。已改为按内容探测补齐后缀并去掉目录，复测上传成功，修复进入 `v0.1.1`，标签已由维护者推送。
 
-同日接着处理头像：Overflow 里所有成员的头像都是陌生人的图。查明 OneBot 不带头像字段，Overflow 只在协议端自报 `gensokyo` 时才调用非标准的 `get_avatar`，其余情况把整数标识当 QQ 号去 qlogo 取；云湖头像地址还需要来源头才能下载。为此新增可选的兼容模式 `compat.gensokyo`，一个开关同时自报名字、提供 `get_avatar` 与头像代理，进入 `v0.2.0`。
+同日接着处理头像：Overflow 里所有成员的头像都是陌生人的图。查明 OneBot 不带头像字段，Overflow 只在协议端自报 `gensokyo` 时才调用非标准的 `get_avatar`，其余情况把整数标识当 QQ 号去 qlogo 取；云湖头像地址还需要来源头才能下载。为此新增可选的兼容模式 `compat.gensokyo`。
+
+最后补齐媒体转发：客户端拿到的媒体地址同样需要来源头，超过内联上限的大文件此前只能拿到打不开的地址。新增 `proxy` 服务，一个监听提供 `/media/<token>` 与 `/avatar/<标识>`，并把配置重新划分为 `media`、`proxy`、`compat` 三段。真实环境确认正常，随 `v0.2.0` 交付。
 
 ## 已完成
 
@@ -470,8 +472,8 @@ M4 的三项验收：
 - Go：1.27.4，安装在 `D:\golang`，`GOTOOLCHAIN` 为 `auto`。
 - 模块代理：本机无法直接连接 `sum.golang.org`，下载依赖时需要设置 `GOPROXY=https://goproxy.cn,direct` 与 `GOSUMDB=sum.golang.google.cn`。这只影响本机，不属于项目配置。
 - 未安装 GNU make 与 golangci-lint 可执行文件。lint 已通过 `go run` 验证，`Makefile` 尚未实际执行。
-- Git 2.37.0，当前分支 `main`；`main` 已推送到 GitHub，`v0.1.1` 标签由维护者推送，`v0.2.0` 标签只在本地等待推送。
-- 真实环境在 `tbpservr`：HelloYunhu 位于 `/home/lyc/helloyunhu`，Overflow 位于 `/home/lyc/data/overflow`，两者都由 MCSManager 托管并以 root 运行，重启由维护者在面板里操作。可执行文件为 `v0.2.0`（提交 `1687449`），配置里已开启 `compat.gensokyo`。
+- Git 2.37.0，当前分支 `main`；`main` 已推送到 GitHub，`v0.1.1` 标签由维护者推送，`v0.2.0` 标签在本地等待推送。
+- 真实环境在 `tbpservr`：HelloYunhu 位于 `/home/lyc/helloyunhu`，Overflow 位于 `/home/lyc/data/overflow`，两者都由 MCSManager 托管并以 root 运行，重启由维护者在面板里操作。可执行文件为 `v0.2.0`（提交 `cd74a4c`），配置里已开启 `proxy` 与 `compat.gensokyo`。
 
 ## 恢复上下文的步骤
 
@@ -487,9 +489,9 @@ M4 的三项验收：
 
 1. 发布 `v0.2.0`：推送 `main` 与标签，确认发行工作流生成三个压缩包与校验和；`v0.1.0` 标签不推送，那个版本的 base64 上传是坏的。
 2. 真实环境验收 M4：Webhook 的真实推送、按 `both` 模式重复投递一条事件、并发 10 条消息不乱序不重复、多连接隔离、订阅连接的断线重连。
-4. 真实环境验收 M3 剩余项：在群里发 `/m2check 695367192 2272345`，日志里应出现 `POST /bot/recall`；禁言与踢人也在同一轮验证参数。
-5. 若要在真实环境验证群成员列表，需要在群后台为机器人开启成员列表权限，之后补测 `/group/members` 的字段名。
-6. 转为公开仓库之前，检查所有提交中没有凭据，并确认依赖许可证与 GPL-3.0 兼容。
+3. 真实环境验收 M3 剩余项：在群里发 `/m2check 695367192 2272345`，日志里应出现 `POST /bot/recall`；禁言与踢人也在同一轮验证参数。
+4. 若要在真实环境验证群成员列表，需要在群后台为机器人开启成员列表权限，之后补测 `/group/members` 的字段名。
+5. 转为公开仓库之前，检查所有提交中没有凭据，并确认依赖许可证与 GPL-3.0 兼容。
 
 ## 已知的未决问题
 
